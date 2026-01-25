@@ -3,16 +3,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from radon.complexity import cc_visit
 from database import SessionLocal, Analysis
-
 import joblib
 import numpy as np
+
+from quality_engine import calculate_quality_score
+from feature_extractor import extract_features
+from complexity_analyzer import estimate_complexity
 
 # ----------------------------
 # App Init
 # ----------------------------
 app = FastAPI()
 
-# ✅ CORS FIX
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -22,9 +24,9 @@ app.add_middleware(
 )
 
 # ----------------------------
-# Load ML Model (ONCE)
+# Load ML Model
 # ----------------------------
-model = joblib.load("risk_model.pkl")
+model = joblib.load("risk_model_v2.pkl")
 
 # ----------------------------
 # Request Model
@@ -38,13 +40,14 @@ class CodeRequest(BaseModel):
 # ----------------------------
 @app.post("/analyze")
 def analyze_code(req: CodeRequest):
+
     results = cc_visit(req.code)
 
     functions = []
     warnings = []
 
     # ------------------------
-    # Extract Metrics
+    # Extract Complexity Metrics
     # ------------------------
     for r in results:
         item = {
@@ -54,7 +57,6 @@ def analyze_code(req: CodeRequest):
         }
         functions.append(item)
 
-        # Rule engine
         if r.complexity >= 10:
             warnings.append(
                 f"⚠️ Function '{r.name}' is very complex (CC={r.complexity}). Consider refactoring."
@@ -65,28 +67,35 @@ def analyze_code(req: CodeRequest):
             )
 
     # ------------------------
-    # ML Feature Engineering
+    # AST Feature Extraction
     # ------------------------
-    complexities = [f["complexity"] for f in functions]
+    features = extract_features(req.code)
+    print("🧠 EXTRACTED FEATURES:", features)
 
-    avg_complexity = sum(complexities) / len(complexities) if complexities else 0
-    max_complexity = max(complexities) if complexities else 0
-    function_count = len(functions)
-    warning_count = len(warnings)
-    loc = len(req.code.splitlines())
-
-    features = np.array([[
-        avg_complexity,
-        max_complexity,
-        function_count,
-        warning_count,
+    (
+        threads,
+        locks,
+        queues,
+        classes,
+        loops,
+        infinite_loops,
+        ifs,
+        funcs,
+        asyncs,
+        globals_,
+        mem_allocs,
+        random_calls,
         loc
-    ]])
+    ) = features
+
+    feature_vector = np.array([features])
 
     # ------------------------
-    # ML Prediction
+    # ML Prediction + Confidence
     # ------------------------
-    prediction = model.predict(features)[0]
+    proba = model.predict_proba(feature_vector)[0]
+    prediction = int(np.argmax(proba))
+    confidence = float(np.max(proba))
 
     risk_map = {
         0: "Low Risk 🟢",
@@ -94,7 +103,94 @@ def analyze_code(req: CodeRequest):
         2: "High Risk 🔴"
     }
 
-    risk_level = risk_map[int(prediction)]
+    ml_risk = risk_map[prediction]
+    final_risk = ml_risk
+
+    # ------------------------
+    # Hybrid Safety Rules
+    # ------------------------
+    explanations = []
+    danger_score = 0
+
+    if mem_allocs > 0:
+        danger_score += 2
+        explanations.append("Memory allocation detected (possible leak)")
+
+    if globals_ >= 3:
+        danger_score += 2
+        explanations.append("Many global mutable variables")
+
+    if asyncs > 0 and threads > 0:
+        danger_score += 2
+        explanations.append("Async mixed with threading")
+
+    if random_calls >= 3:
+        danger_score += 2
+        explanations.append("Frequent random behavior detected")
+
+    if locks >= 2 and threads >= 3:
+        danger_score += 1
+        explanations.append("Multiple locks with many threads")
+
+    if infinite_loops >= 2 and random_calls >= 2:
+        danger_score += 2
+        explanations.append("Unstable infinite loops detected")
+
+    if infinite_loops >= 3:
+        danger_score += 1
+        explanations.append("Heavy infinite looping")
+
+    if threads >= 5:
+        danger_score += 1
+        explanations.append("High thread count")
+
+    # Baseline
+    if infinite_loops > 0:
+        baseline_risk = "Medium Risk 🟡"
+        explanations.append("Infinite loop detected")
+    elif threads >= 1:
+        baseline_risk = "Medium Risk 🟡"
+        explanations.append("Concurrent system detected")
+    else:
+        baseline_risk = ml_risk
+
+    # Final Risk
+    if danger_score >= 4:
+        final_risk = "High Risk 🔴"
+    elif danger_score >= 2:
+        final_risk = "Medium Risk 🟡"
+    else:
+        final_risk = baseline_risk
+
+    if final_risk != ml_risk:
+        explanations.append(f"ML predicted {ml_risk}, adjusted by safety rules")
+
+    # ------------------------
+    # Time Complexity
+    # ------------------------
+    time_complexity = estimate_complexity(req.code)
+
+    # ------------------------
+    # Code Quality Score
+    # ------------------------
+    complexities = [f["complexity"] for f in functions]
+    avg_complexity = (
+        sum(complexities) / len(complexities)
+        if complexities else 0
+    )
+
+    quality_score, quality_grade, quality_reasons = calculate_quality_score(
+        avg_complexity=avg_complexity,
+        warning_count=len(warnings),
+        loc=loc,
+        globals_=globals_,
+        random_calls=random_calls,
+        mem_allocs=mem_allocs,
+        threads=threads,
+        locks=locks,
+        infinite_loops=infinite_loops,
+        danger_score=danger_score
+    )
 
     # ------------------------
     # Save to Database
@@ -105,7 +201,16 @@ def analyze_code(req: CodeRequest):
         result={
             "functions": functions,
             "warnings": warnings,
-            "risk": risk_level
+            "risk": final_risk,
+            "ml_risk": ml_risk,
+            "confidence": round(confidence * 100, 2),
+            "features": features,
+            "explanations": explanations,
+            "danger_score": danger_score,
+            "time_complexity": time_complexity,
+            "quality_score": quality_score,
+            "quality_grade": quality_grade,
+            "quality_reasons": quality_reasons
         }
     )
     db.add(record)
@@ -118,7 +223,16 @@ def analyze_code(req: CodeRequest):
     return {
         "functions": functions,
         "warnings": warnings,
-        "risk": risk_level
+        "risk": final_risk,
+        "ml_risk": ml_risk,
+        "confidence": round(confidence * 100, 2),
+        "features": features,
+        "explanations": explanations,
+        "danger_score": danger_score,
+        "time_complexity": time_complexity,
+        "quality_score": quality_score,
+        "quality_grade": quality_grade,
+        "quality_reasons": quality_reasons
     }
 
 

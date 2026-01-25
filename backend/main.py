@@ -2,9 +2,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from radon.complexity import cc_visit
-
 from database import SessionLocal, Analysis
 
+import joblib
+import numpy as np
+
+# ----------------------------
+# App Init
+# ----------------------------
 app = FastAPI()
 
 # ✅ CORS FIX
@@ -15,6 +20,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ----------------------------
+# Load ML Model (ONCE)
+# ----------------------------
+model = joblib.load("risk_model.pkl")
 
 # ----------------------------
 # Request Model
@@ -33,6 +43,9 @@ def analyze_code(req: CodeRequest):
     functions = []
     warnings = []
 
+    # ------------------------
+    # Extract Metrics
+    # ------------------------
     for r in results:
         item = {
             "name": r.name,
@@ -41,7 +54,7 @@ def analyze_code(req: CodeRequest):
         }
         functions.append(item)
 
-        # ✅ Rule engine
+        # Rule engine
         if r.complexity >= 10:
             warnings.append(
                 f"⚠️ Function '{r.name}' is very complex (CC={r.complexity}). Consider refactoring."
@@ -51,22 +64,61 @@ def analyze_code(req: CodeRequest):
                 f"⚠️ Function '{r.name}' is moderately complex (CC={r.complexity}). Review logic."
             )
 
-    # ✅ Save to database (ONLY ONCE per request)
+    # ------------------------
+    # ML Feature Engineering
+    # ------------------------
+    complexities = [f["complexity"] for f in functions]
+
+    avg_complexity = sum(complexities) / len(complexities) if complexities else 0
+    max_complexity = max(complexities) if complexities else 0
+    function_count = len(functions)
+    warning_count = len(warnings)
+    loc = len(req.code.splitlines())
+
+    features = np.array([[
+        avg_complexity,
+        max_complexity,
+        function_count,
+        warning_count,
+        loc
+    ]])
+
+    # ------------------------
+    # ML Prediction
+    # ------------------------
+    prediction = model.predict(features)[0]
+
+    risk_map = {
+        0: "Low Risk 🟢",
+        1: "Medium Risk 🟡",
+        2: "High Risk 🔴"
+    }
+
+    risk_level = risk_map[int(prediction)]
+
+    # ------------------------
+    # Save to Database
+    # ------------------------
     db = SessionLocal()
     record = Analysis(
         code=req.code,
         result={
             "functions": functions,
-            "warnings": warnings
+            "warnings": warnings,
+            "risk": risk_level
         }
     )
     db.add(record)
     db.commit()
     db.close()
 
+    # ------------------------
+    # API Response
+    # ------------------------
     return {
         "functions": functions,
-        "warnings": warnings
+        "warnings": warnings,
+        "risk": risk_level
     }
 
 

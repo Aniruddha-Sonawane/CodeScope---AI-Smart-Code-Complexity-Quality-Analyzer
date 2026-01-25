@@ -27,7 +27,11 @@ def second():
 
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [history, setHistory] = useState<any[]>([]);
 
+  // ------------------------
+  // Analyze Code
+  // ------------------------
   async function analyze() {
     setLoading(true);
 
@@ -42,7 +46,9 @@ def second():
     setLoading(false);
   }
 
-  // ✅ PDF Export Function (INSIDE COMPONENT)
+  // ------------------------
+  // Download PDF Report
+  // ------------------------
   function downloadReport() {
     if (!result) return;
 
@@ -70,9 +76,32 @@ def second():
       });
     }
 
+    // ✅ Include AI Risk in PDF
+    if (result.risk) {
+      const y = (doc as any).lastAutoTable.finalY + 40;
+      doc.text(`AI Risk Prediction: ${result.risk}`, 14, y);
+    }
+
     doc.save("codescope-report.pdf");
   }
-  
+
+  // ------------------------
+  // Load History from Backend
+  // ------------------------
+  async function loadHistory() {
+    const res = await fetch("http://127.0.0.1:8000/history");
+    const data = await res.json();
+    setHistory(data);
+  }
+
+  // ------------------------
+  // Restore From History
+  // ------------------------
+  function loadFromHistory(item: any) {
+    setCode(item.code);
+    setResult(item.result);
+  }
+
   return (
     <div style={{ padding: 20 }}>
       <h1>🚀 CodeScope Analyzer</h1>
@@ -98,10 +127,24 @@ def second():
             📄 Download Report
           </button>
         )}
+
+        <button
+          onClick={loadHistory}
+          style={{ marginLeft: 10, padding: "8px 16px" }}
+        >
+          📜 Load History
+        </button>
       </div>
 
       {result && (
         <>
+          {/* ✅ AI Risk Display */}
+          {result.risk && (
+            <h2 style={{ marginTop: 20 }}>
+              🤖 AI Risk Prediction: <span>{result.risk}</span>
+            </h2>
+          )}
+
           <h2>📊 Complexity Table</h2>
 
           <table border={1} cellPadding={8}>
@@ -146,6 +189,37 @@ def second():
               </BarChart>
             </ResponsiveContainer>
           </div>
+        </>
+      )}
+
+      {history.length > 0 && (
+        <>
+          <h2>📜 Analysis History</h2>
+
+          <table border={1} cellPadding={6}>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Functions</th>
+                <th>Warnings</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((item) => (
+                <tr
+                  key={item.id}
+                  style={{ cursor: "pointer" }}
+                  onClick={() => loadFromHistory(item)}
+                >
+                  <td>{item.id}</td>
+                  <td>{item.result.functions.length}</td>
+                  <td>{item.result.warnings.length}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <p>👉 Click any row to restore analysis</p>
         </>
       )}
     </div>

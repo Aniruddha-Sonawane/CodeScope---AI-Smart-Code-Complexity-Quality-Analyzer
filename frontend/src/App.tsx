@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useRef } from "react"; // 1. Imported useRef
 import Editor from "@monaco-editor/react";
 import {
   BarChart,
@@ -7,12 +7,13 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  Cell
+  Cell,
+  CartesianGrid
 } from "recharts";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import logoImg from "./assets/logo.png";
 
-// --- Theme Constants ---
 const COLORS = {
   bg: "#020617",
   card: "#0f172a",
@@ -20,303 +21,457 @@ const COLORS = {
   textMain: "#f8fafc",
   textMuted: "#94a3b8",
   primary: "#6366f1",
-  primaryHover: "#4f46e5",
-  accent: "#06b6d4",
-  success: "#10b981",
-  warning: "#f59e0b",
-  danger: "#ef4444"
+  accent: "#22d3ee",
+  danger: "#ef4444",
+  modalOverlay: "rgba(0, 0, 0, 0.9)"
 };
 
 const cardStyle: React.CSSProperties = {
   background: COLORS.card,
   padding: "20px",
-  borderRadius: "12px",
+  borderRadius: "16px",
   border: `1px solid ${COLORS.border}`,
   marginBottom: "20px",
 };
 
-const buttonStyle: React.CSSProperties = {
-  padding: "10px 20px",
-  borderRadius: "8px",
-  border: "none",
-  fontWeight: "600",
-  cursor: "pointer",
-  transition: "all 0.2s ease",
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "8px",
+const modalStyle: React.CSSProperties = {
+  position: "fixed",
+  top: "50%",
+  left: "50%",
+  transform: "translate(-50%, -50%)",
+  background: COLORS.card,
+  border: `1px solid ${COLORS.border}`,
+  borderRadius: "20px",
+  padding: "24px",
+  zIndex: 1001,
+  width: "90%",
+  maxWidth: "850px", 
+  height: "500px",    
+  display: "flex",
+  flexDirection: "column",
+  boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.8)",
+  overflow: "hidden"
+};
+const overlayStyle: React.CSSProperties = {
+  position: "fixed",
+  top: 0, left: 0, right: 0, bottom: 0,
+  background: COLORS.modalOverlay,
+  backdropFilter: "blur(8px)",
+  zIndex: 1000
 };
 
-// --- Refined Badge Component ---
 function badge(text: string) {
-  let bgColor = "rgba(148, 163, 184, 0.1)";
-  let textColor = COLORS.textMuted;
-
-  if (text.includes("Low") || text.includes("Excellent")) {
-    bgColor = "rgba(16, 185, 129, 0.15)";
-    textColor = COLORS.success;
-  } else if (text.includes("Medium") || text.includes("Fair") || text.includes("Good")) {
-    bgColor = "rgba(245, 158, 11, 0.15)";
-    textColor = COLORS.warning;
-  } else if (text.includes("High") || text.includes("Poor")) {
-    bgColor = "rgba(239, 68, 68, 0.15)";
-    textColor = COLORS.danger;
-  }
-
+  let color = COLORS.textMuted;
+  if (text.includes("Low") || text.includes("Excellent")) color = "#10b981";
+  else if (text.includes("High") || text.includes("Poor")) color = COLORS.danger;
+  
   return (
     <span style={{
-      background: bgColor,
-      color: textColor,
-      padding: "4px 12px",
-      borderRadius: "20px",
-      fontSize: "0.75rem",
+      background: `${color}15`,
+      color: color,
+      padding: "4px 10px",
+      borderRadius: "12px",
+      fontSize: "0.7rem",
       fontWeight: "bold",
-      textTransform: "uppercase",
-      border: `1px solid ${textColor}33`,
-      marginLeft: "10px"
-    }}>
-      {text}
-    </span>
+      border: `1px solid ${color}33`
+    }}>{text}</span>
   );
 }
 
 export default function App() {
-  const [code, setCode] = useState<string>(
-    `def example():\n    for i in range(10):\n        if i % 2 == 0:\n            print(i)`
-  );
+  // --- 2. Create Reference for Editor ---
+  const editorRef = useRef<any>(null);
+
+  const [code, setCode] = useState<string>(`def example():\n    for i in range(10):\n        if i % 2 == 0:\n            print(i)`);
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
+  
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isGraphZoomOpen, setIsGraphZoomOpen] = useState(false);
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
+  const filteredFunctions = useMemo(() => {
+    if (!result?.functions) return [];
+    return result.functions.filter((fn: any) => 
+      fn.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [result, searchTerm]);
+
+  // --- 3. Function to handle jumping to code line ---
+  const handleFunctionClick = (line: number) => {
+    // If the modal is open, close it so we can see the editor
+    setIsGraphZoomOpen(false);
+
+    if (editorRef.current && line) {
+      // Reveal the line in the center of the editor
+      editorRef.current.revealLineInCenter(line);
+      // Move cursor to that line
+      editorRef.current.setPosition({ lineNumber: line, column: 1 });
+      // Focus the editor
+      editorRef.current.focus();
+    }
+  };
+  
   async function analyze() {
     setLoading(true);
-    const res = await fetch("http://127.0.0.1:8000/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code })
-    });
-    const data = await res.json();
-    setResult(data);
+    // Simulating result for demo purposes if backend isn't running
+    // Replace with your actual fetch if backend is live
+    try {
+        const res = await fetch("http://127.0.0.1:8000/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code })
+        });
+        const data = await res.json();
+        setResult(data);
+    } catch (e) {
+        console.error("Backend not connected");
+    }
     setLoading(false);
   }
 
   function downloadReport() {
     if (!result) return;
     const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text("CodeScope Analysis Report", 14, 20);
-    autoTable(doc, {
-      startY: 30,
-      head: [["Function", "Complexity", "Line"]],
-      body: result.functions.map((f: any) => [f.name, f.complexity, f.line]),
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const cleanStr = (str: string) => str.replace(/[^\x00-\x7F]/g, "").trim();
+
+    doc.setFillColor(15, 23, 42); 
+    doc.rect(0, 0, pageWidth, 40, "F");
+    
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(20);
+    doc.setFont("helvetica", "bold");
+    doc.text("CODESCOPE AI ANALYSIS", 20, 25);
+    
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text(`REPORT ID: ${Math.random().toString(36).substr(2, 9).toUpperCase()}`, 20, 32);
+    doc.text(`DATE: ${new Date().toLocaleDateString()}`, pageWidth - 60, 32);
+
+    let yPos = 55;
+    doc.setTextColor(15, 23, 42);
+    doc.setFontSize(14);
+    doc.text("EXECUTIVE METRICS", 20, yPos);
+    
+    yPos += 10;
+    const colW = (pageWidth - 40) / 3;
+    
+    doc.setFontSize(9);
+    doc.setTextColor(148, 163, 184);
+    doc.text("QUALITY GRADE", 20, yPos);
+    doc.setFontSize(12);
+    doc.setTextColor(99, 102, 241);
+    doc.setFont("helvetica", "bold");
+    doc.text(cleanStr(result.quality_grade), 20, yPos + 7);
+
+    doc.setFontSize(9);
+    doc.setTextColor(148, 163, 184);
+    doc.text("RISK LEVEL", 20 + colW, yPos);
+    doc.setFontSize(12);
+    const isHighRisk = result.risk.toLowerCase().includes("high");
+    doc.setTextColor(isHighRisk ? 220 : 16, isHighRisk ? 38 : 185, isHighRisk ? 38 : 129);
+    doc.text(cleanStr(result.risk), 20 + colW, yPos + 7);
+
+    doc.setFontSize(9);
+    doc.setTextColor(148, 163, 184);
+    doc.text("COMPLEXITY", 20 + (colW * 2), yPos);
+    doc.setFontSize(12);
+    doc.setTextColor(34, 211, 238);
+    doc.text(cleanStr(result.time_complexity), 20 + (colW * 2), yPos + 7);
+
+    yPos += 25;
+    doc.setDrawColor(226, 232, 240);
+    doc.line(20, yPos, pageWidth - 20, yPos); 
+    
+    yPos += 15;
+    doc.setTextColor(15, 23, 42);
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text("AI OBSERVATIONS", 20, yPos);
+    
+    yPos += 10;
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(71, 85, 105);
+    
+    result.explanations.forEach((obs: string) => {
+      const splitText = doc.splitTextToSize(`> ${cleanStr(obs)}`, pageWidth - 40);
+      if (yPos + 20 > 280) { doc.addPage(); yPos = 20; }
+      doc.text(splitText, 20, yPos);
+      yPos += (splitText.length * 6) + 4;
     });
-    let y = (doc as any).lastAutoTable.finalY + 15;
-    doc.text(`Risk: ${result.risk}`, 14, y); y += 8;
-    doc.text(`Confidence: ${result.confidence}%`, 14, y); y += 8;
-    doc.text(`Time Complexity: ${result.time_complexity}`, 14, y); y += 8;
-    doc.text(`Quality: ${result.quality_score}/100 (${result.quality_grade})`, 14, y);
-    doc.save("codescope-report.pdf");
+
+    yPos += 10;
+    autoTable(doc, {
+      startY: yPos,
+      head: [["FUNCTION NAME", "LINE", "SCORE", "REMARKS"]],
+      body: result.functions.map((f: any) => [
+        cleanStr(f.name),
+        f.line,
+        f.complexity,
+        f.complexity > 5 ? "NEEDS REFACTOR" : "OPTIMIZED"
+      ]),
+      styles: { fontSize: 9, cellPadding: 5 },
+      headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [249, 250, 251] },
+      margin: { left: 20, right: 20 }
+    });
+
+    doc.save(`Analysis_Report_${new Date().getTime()}.pdf`);
   }
 
   async function loadHistory() {
-    const res = await fetch("http://127.0.0.1:8000/history");
-    const data = await res.json();
-    setHistory(data);
+    try {
+        const res = await fetch("http://127.0.0.1:8000/history");
+        const data = await res.json();
+        setHistory(data);
+        setIsHistoryOpen(true);
+    } catch(e) { console.error("Backend not connected"); }
   }
 
-  function loadFromHistory(item: any) {
-    setCode(item.code);
-    setResult(item.result);
-  }
+  // --- 4. Pass click handler to BarChart ---
+  const ChartContent = ({ height = 200, data = [] }: { height?: number, data?: any[] }) => (
+    <ResponsiveContainer width="100%" height={height}>
+      <BarChart data={data}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
+        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: COLORS.textMuted, fontSize: 10}} />
+        <YAxis axisLine={false} tickLine={false} tick={{fill: COLORS.textMuted, fontSize: 10}} />
+        <Tooltip cursor={{fill: '#ffffff0a'}} contentStyle={{ background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: '12px' }} />
+        <Bar 
+          dataKey="complexity" 
+          radius={[6, 6, 0, 0]} 
+          barSize={40} 
+          // FIX IS HERE: Type as 'any' and access 'payload.line'
+          onClick={(data: any) => {
+            if (data && data.payload && data.payload.line) {
+              handleFunctionClick(data.payload.line);
+            }
+          }}
+          style={{ cursor: 'pointer' }}
+        >
+          {data.map((entry: any, index: number) => (
+            <Cell key={index} fill={entry.complexity > 5 ? COLORS.danger : COLORS.primary} />
+          ))}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
 
   return (
-    <div style={{
-      padding: "40px",
-      background: COLORS.bg,
-      minHeight: "100vh",
-      color: COLORS.textMain,
-      fontFamily: "'Inter', system-ui, sans-serif",
-      boxSizing: "border-box"
-    }}>
+    <div style={{ background: COLORS.bg, minHeight: "100vh", color: COLORS.textMain, fontFamily: "'Inter', sans-serif" }}>
       
-      {/* Header */}
-      <header style={{ marginBottom: "40px" }}>
-        <h1 style={{ 
-          fontSize: "2rem", 
-          fontWeight: "800", 
-          margin: 0, 
-          background: `linear-gradient(to right, ${COLORS.primary}, ${COLORS.accent})`,
-          WebkitBackgroundClip: "text",
-          WebkitTextFillColor: "transparent"
-        }}>
-          CodeScope AI <span style={{ fontWeight: "300", color: COLORS.textMuted, WebkitTextFillColor: COLORS.textMuted }}>| Analyzer</span>
-        </h1>
-        <p style={{ color: COLORS.textMuted, marginTop: "8px" }}>Deep complexity analysis and quality scoring powered by AI.</p>
-      </header>
-
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "1.8fr 1fr",
-        gap: "24px",
-        alignItems: "start"
+      {/* ================= TOPBAR ================= */}
+      <nav style={{
+        position: "sticky", top: 0, zIndex: 100, background: "rgba(2, 6, 23, 0.85)",
+        backdropFilter: "blur(12px)", borderBottom: `1px solid ${COLORS.border}`,
+        padding: "0 40px", height: "70px", display: "flex", alignItems: "center"
       }}>
-        
-        {/* LEFT COLUMN */}
-        <div>
-          {/* Editor Card */}
-          <div style={cardStyle}>
-            <div style={{ borderRadius: "8px", overflow: "hidden", border: `1px solid ${COLORS.border}` }}>
-              <Editor
-                height="320px"
-                defaultLanguage="python"
-                value={code}
-                onChange={(value) => setCode(value || "")}
-                theme="vs-dark"
-                options={{ fontSize: 14, minimap: { enabled: false }, padding: { top: 16 } }}
-              />
+        <div 
+          onClick={() => setIsSearchVisible(!isSearchVisible)} 
+          style={{ display: "flex", alignItems: "center", gap: "15px", cursor: "pointer" }}
+        >
+          <img src={logoImg} alt="Logo" style={{ width: 42, height: 42, borderRadius: "10px", objectFit: "contain" }} />
+          <span style={{ 
+            fontWeight: 800, 
+            fontSize: "1.05rem", 
+            letterSpacing: "0.05em", 
+            whiteSpace: "nowrap",
+            fontFamily: "'Outfit', sans-serif",
+            background: `linear-gradient(to right, ${COLORS.textMain}, ${COLORS.textMuted})`,
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent"
+          }}>
+          AI CODE COMPLEXITY & QUALITY ANALYZER
+          </span>
+        </div>
+
+        <div style={{ flex: 1, display: "flex", justifyContent: "center", padding: "0 40px" }}>
+          {isSearchVisible && (
+            <input 
+              autoFocus
+              type="text"
+              placeholder="Filter functions..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: "100%", maxWidth: "450px", background: "rgba(15, 23, 42, 0.6)",
+                border: `1px solid ${COLORS.primary}88`, borderRadius: "12px",
+                padding: "10px 20px", color: "#fff", outline: "none", fontSize: "0.9rem"
+              }}
+            />
+          )}
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
+          <span style={{ fontSize: "0.85rem", color: COLORS.textMuted }}>
+            By <b style={{ color: COLORS.textMain }}>Aniruddha Sonawane</b>
+          </span>
+          <a href="https://github.com" target="_blank" style={{ color: COLORS.textMain, textDecoration: "none", fontSize: "0.8rem", border: `1px solid ${COLORS.border}`, padding: "6px 14px", borderRadius: "8px" }}>GitHub</a>
+          <a href="https://linkedin.com" target="_blank" style={{ color: COLORS.textMain, textDecoration: "none", fontSize: "0.8rem", border: `1px solid ${COLORS.border}`, padding: "6px 14px", borderRadius: "8px" }}>LinkedIn</a>
+        </div>
+      </nav>
+
+      <main style={{ maxWidth: "1500px", margin: "0 auto", padding: "30px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "2.2fr 1fr", gap: "25px" }}>
+          
+          {/* LEFT SIDE */}
+          <div>
+            <div style={cardStyle}>
+              <div style={{ borderRadius: "12px", overflow: "hidden", border: `1px solid ${COLORS.border}` }}>
+                {/* 5. Attach Editor Ref via onMount */}
+                <Editor 
+                    height="420px" 
+                    defaultLanguage="python" 
+                    value={code} 
+                    theme="vs-dark" 
+                    onChange={(v) => setCode(v || "")} 
+                    onMount={(editor) => { editorRef.current = editor; }} 
+                />
+              </div>
+              <div style={{ marginTop: "24px", display: "flex", gap: "12px" }}>
+                <button onClick={analyze} style={{ background: COLORS.primary, color: "#fff", border: "none", padding: "12px 28px", borderRadius: "10px", fontWeight: "bold", cursor: "pointer" }}>
+                  {loading ? "Analyzing..." : "Analyze Now"}
+                </button>
+                <button onClick={loadHistory} style={{ background: "transparent", color: COLORS.textMain, border: `1px solid ${COLORS.border}`, padding: "12px 28px", borderRadius: "10px", cursor: "pointer" }}>
+                  📜 History
+                </button>
+                {result && <button onClick={downloadReport} style={{ background: "transparent", color: COLORS.textMuted, border: "none", cursor: "pointer", marginLeft: "auto" }}>Download PDF</button>}
+              </div>
             </div>
 
-            <div style={{ marginTop: "20px", display: "flex", gap: "12px" }}>
-              <button 
-                onClick={analyze} 
-                style={{ ...buttonStyle, background: COLORS.primary, color: "white" }}
-                disabled={loading}
-              >
-                {loading ? "Analyzing..." : "🚀 Run Analysis"}
-              </button>
-              {result && (
-                <button onClick={downloadReport} style={{ ...buttonStyle, background: COLORS.border, color: COLORS.textMain }}>
-                  📄 Export PDF
-                </button>
-              )}
-              <button onClick={loadHistory} style={{ ...buttonStyle, background: "transparent", color: COLORS.textMuted, border: `1px solid ${COLORS.border}` }}>
-                📜 View History
-              </button>
-            </div>
+            {result && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px" }}>
+                <div style={cardStyle}><p style={{ color: COLORS.textMuted, fontSize: "0.75rem", fontWeight: "bold", marginBottom: "12px" }}>RISK ASSESSMENT</p>{badge(result.risk)}</div>
+                <div style={cardStyle}><p style={{ color: COLORS.textMuted, fontSize: "0.75rem", fontWeight: "bold", marginBottom: "12px" }}>OVERALL GRADE</p>{badge(result.quality_grade)}</div>
+                <div style={cardStyle}><p style={{ color: COLORS.textMuted, fontSize: "0.75rem", fontWeight: "bold", marginBottom: "12px" }}>COMPLEXITY</p><b style={{ color: COLORS.accent, fontSize: "1.1rem" }}>{result.time_complexity}</b></div>
+              </div>
+            )}
           </div>
 
-          {/* Results Grid */}
-          {result && (
-            <div style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
-              gap: "16px",
-              marginBottom: "24px"
-            }}>
-              <div style={cardStyle}>
-                <div style={{ color: COLORS.textMuted, fontSize: "0.8rem", marginBottom: "8px" }}>Risk Level</div>
-                <div style={{ fontSize: "1.2rem", fontWeight: "bold", display: "flex", alignItems: "center" }}>
-                   {badge(result.risk)}
-                </div>
-                <div style={{ fontSize: "0.75rem", color: COLORS.textMuted, marginTop: "10px" }}>Confidence: {result.confidence}%</div>
-              </div>
-
-              <div style={cardStyle}>
-                <div style={{ color: COLORS.textMuted, fontSize: "0.8rem", marginBottom: "8px" }}>Quality Grade</div>
-                <div style={{ fontSize: "1.2rem", fontWeight: "bold" }}>
-                   {badge(result.quality_grade)}
-                </div>
-                <div style={{ fontSize: "0.75rem", color: COLORS.textMuted, marginTop: "10px" }}>Score: {result.quality_score}/100</div>
-              </div>
-
-              <div style={cardStyle}>
-                <div style={{ color: COLORS.textMuted, fontSize: "0.8rem", marginBottom: "8px" }}>Time Complexity</div>
-                <div style={{ fontSize: "1.1rem", fontWeight: "bold", color: COLORS.accent }}>{result.time_complexity}</div>
-                <div style={{ fontSize: "0.75rem", color: COLORS.textMuted, marginTop: "10px" }}>Predicted Scale</div>
-              </div>
-            </div>
-          )}
-
-          {/* Chart Section */}
-          {result && (
-            <div style={cardStyle}>
-              <h3 style={{ fontSize: "1rem", marginBottom: "20px", color: COLORS.textMuted }}>Complexity per Function</h3>
-              <div style={{ height: 250 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={result.functions}>
-                    <XAxis dataKey="name" stroke={COLORS.textMuted} fontSize={12} tickLine={false} axisLine={false} />
-                    <YAxis stroke={COLORS.textMuted} fontSize={12} tickLine={false} axisLine={false} />
-                    <Tooltip 
-                      contentStyle={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: "8px" }}
-                      cursor={{ fill: COLORS.border }}
-                    />
-                    <Bar dataKey="complexity" radius={[4, 4, 0, 0]}>
-                      {result.functions.map((entry: any, index: number) => (
-                        <Cell key={`cell-${index}`} fill={entry.complexity > 5 ? COLORS.danger : COLORS.primary} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* RIGHT COLUMN */}
-        <div style={{ position: "sticky", top: 40 }}>
-          {result && (
-            <div style={cardStyle}>
-              <h3 style={{ fontSize: "1rem", marginBottom: "16px" }}>🔍 Observations</h3>
-              <ul style={{ paddingLeft: "18px", color: COLORS.textMuted, lineHeight: "1.6", fontSize: "0.9rem" }}>
-                {result.explanations.map((e: string, i: number) => (
-                  <li key={i} style={{ marginBottom: "8px" }}>{e}</li>
-                ))}
-              </ul>
-
-              <hr style={{ border: "none", borderTop: `1px solid ${COLORS.border}`, margin: "20px 0" }} />
-
-              <h3 style={{ fontSize: "1rem", marginBottom: "16px" }}>📊 Breakdown</h3>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
-                <thead>
-                  <tr style={{ color: COLORS.textMuted, textAlign: "left" }}>
-                    <th style={{ padding: "8px" }}>Function</th>
-                    <th style={{ padding: "8px", textAlign: "center" }}>Cyclomatic</th>
-                    <th style={{ padding: "8px", textAlign: "center" }}>Line</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.functions.map((fn: any, idx: number) => (
-                    <tr key={idx} style={{ borderTop: `1px solid ${COLORS.border}` }}>
-                      <td style={{ padding: "12px 8px", fontWeight: "600" }}>{fn.name}</td>
-                      <td style={{ padding: "12px 8px", textAlign: "center", color: COLORS.accent }}>{fn.complexity}</td>
-                      <td style={{ padding: "12px 8px", textAlign: "center" }}>{fn.line}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* History Section */}
-          {history.length > 0 && (
-            <div style={cardStyle}>
-              <h3 style={{ fontSize: "1rem", marginBottom: "16px" }}>📜 Recent Audits</h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                {history.map((item) => (
-                  <div
-                    key={item.id}
-                    onClick={() => loadFromHistory(item)}
-                    style={{
-                      padding: "10px",
-                      borderRadius: "8px",
-                      background: COLORS.bg,
-                      cursor: "pointer",
-                      border: `1px solid ${COLORS.border}`,
-                      fontSize: "0.8rem",
-                      transition: "transform 0.1s"
-                    }}
-                  >
-                    <div style={{ fontWeight: "bold", marginBottom: "4px" }}>Audit #{item.id}</div>
-                    <div style={{ color: COLORS.textMuted }}>
-                      {item.result.functions.length} functions detected • {item.result.warnings.length} warnings
-                    </div>
+          {/* RIGHT SIDE */}
+          <div style={{ position: "sticky", top: "100px" }}>
+            {result && (
+              <>
+                <div style={cardStyle}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+                    <h3 style={{ fontSize: "0.9rem", color: COLORS.textMuted, margin: 0 }}>Complexity Graph</h3>
+                    <button onClick={() => setIsGraphZoomOpen(true)} style={{ background: "transparent", border: "none", color: COLORS.accent, cursor: "pointer", fontSize: "0.8rem" }}>Expand ↗</button>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+                  <ChartContent height={220} data={filteredFunctions} />
+                </div>
+
+                <div style={cardStyle}>
+                  <h3 style={{ fontSize: "0.9rem", color: COLORS.textMuted, marginBottom: "15px" }}>AI Observations</h3>
+                  <ul style={{ paddingLeft: "1.2rem", color: COLORS.textMuted, fontSize: "0.85rem", lineHeight: "1.7" }}>
+                    {result.explanations.map((e: string, i: number) => <li key={i} style={{ marginBottom: "10px" }}>{e}</li>)}
+                  </ul>
+                </div>
+              </>
+            )}
+          </div>
         </div>
+      </main>
+
+      {/* ================= MODALS ================= */}
+      
+      {/* HISTORY MODAL (UNTOUCHED) */}
+      {isHistoryOpen && (
+        <>
+          <div style={overlayStyle} onClick={() => setIsHistoryOpen(false)} />
+          <div style={modalStyle}>
+             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "25px" }}>
+              <h2 style={{ margin: 0 }}>Analysis History</h2>
+              <button onClick={() => setIsHistoryOpen(false)} style={{ background: "transparent", border: "none", color: COLORS.textMuted, fontSize: "2rem", cursor: "pointer" }}>&times;</button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+              {history.map((item) => (
+                <div key={item.id} onClick={() => { setCode(item.code); setResult(item.result); setIsHistoryOpen(false); }} 
+                     style={{ padding: "20px", border: `1px solid ${COLORS.border}`, borderRadius: "16px", cursor: "pointer", background: "rgba(255,255,255,0.02)" }}>
+                  <b style={{ color: COLORS.primary }}>Session #{item.id}</b>
+                  <p style={{ color: COLORS.textMuted, fontSize: "0.85rem", marginTop: "8px" }}>{item.result.functions.length} functions found • {item.result.quality_grade} Grade</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* EXPANDED GRAPH MODAL */}
+      {isGraphZoomOpen && (
+  <>
+    <div style={overlayStyle} onClick={() => setIsGraphZoomOpen(false)} />
+    <div style={modalStyle}>
+      {/* HEADER */}
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "20px" }}>
+        <h3 style={{ margin: 0, fontSize: "1.1rem", fontFamily: "'Outfit', sans-serif", color: COLORS.textMain }}>
+          Complexity Analysis
+        </h3>
+        <button 
+          onClick={() => setIsGraphZoomOpen(false)} 
+          style={{ background: "transparent", border: "none", color: COLORS.textMuted, cursor: "pointer", fontSize: "1.2rem" }}
+        >
+          &times;
+        </button>
       </div>
+
+      {/* CONTENT GRID */}
+      <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: "20px", flex: 1, overflow: "hidden" }}>
+        
+        {/* LEFT: GRAPH AREA */}
+        <div style={{ background: "rgba(0,0,0,0.2)", borderRadius: "12px", padding: "10px", border: `1px solid ${COLORS.border}` }}>
+          <ChartContent height={380} data={filteredFunctions} />
+        </div>
+
+        {/* RIGHT: LIST AREA (SCROLLABLE) */}
+        <div style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <h4 style={{ color: COLORS.textMuted, fontSize: "0.65rem", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "10px" }}>
+            Functions ({filteredFunctions.length})
+          </h4>
+          
+          <div style={{ overflowY: "auto", flex: 1, paddingRight: "8px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {filteredFunctions.map((fn: any, idx: number) => (
+                <div 
+                  key={idx} 
+                  // 6. Attach Click Handler to List Items
+                  onClick={() => handleFunctionClick(fn.line)}
+                  style={{ 
+                    padding: "10px 14px", 
+                    background: "rgba(255,255,255,0.02)", 
+                    borderRadius: "8px", 
+                    border: `1px solid ${COLORS.border}`,
+                    display: "flex", 
+                    justifyContent: "space-between", 
+                    alignItems: "center",
+                    cursor: "pointer" // Make it look clickable
+                  }}
+                  // Optional hover effect could be added here via CSS class
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.05)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.02)")}
+                >
+                  <span style={{ fontSize: "0.85rem", fontWeight: "500", color: COLORS.textMain, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {fn.name}
+                  </span>
+                  <span style={{ 
+                    fontSize: "0.85rem", 
+                    fontWeight: "bold", 
+                    color: fn.complexity > 5 ? COLORS.danger : COLORS.accent 
+                  }}>
+                    {fn.complexity}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        
+      </div>
+    </div>
+  </>
+)}
     </div>
   );
 }

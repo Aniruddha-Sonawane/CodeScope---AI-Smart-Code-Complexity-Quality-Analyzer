@@ -13,6 +13,8 @@ import {
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import logoImg from "./assets/logo.png";
+import githubLogo from "./assets/github.png";
+import linkedinLogo from "./assets/linkedin.png";
 
 const COLORS = {
   bg: "#020617",
@@ -27,8 +29,10 @@ const COLORS = {
 };
 
 const cardStyle: React.CSSProperties = {
+  
   background: COLORS.card,
-  padding: "20px",
+  padding: "22px",
+  fontSize: "1.25rem",
   borderRadius: "16px",
   border: `1px solid ${COLORS.border}`,
   marginBottom: "20px",
@@ -261,7 +265,22 @@ export default function App() {
   );
 
   return (
-    <div style={{ background: COLORS.bg, minHeight: "100vh", color: COLORS.textMain, fontFamily: "'Inter', sans-serif" }}>
+<div
+  style={{
+    fontSize: "1.05rem",
+    background: COLORS.bg,
+    minHeight: "100vh",
+    color: COLORS.textMain,
+    fontFamily: "'Inter', sans-serif",
+    transform: "scale(0.8)",          // 🔽 zoom out 20%
+    transformOrigin: "top center",
+    width: "125%",                    // compensate scaling
+    marginLeft: "-12.5%",
+    overflow: "hidden"
+    
+  }}
+>
+
       
       {/* ================= TOPBAR ================= */}
       <nav style={{
@@ -276,7 +295,7 @@ export default function App() {
           <img src={logoImg} alt="Logo" style={{ width: 42, height: 42, borderRadius: "10px", objectFit: "contain" }} />
           <span style={{ 
             fontWeight: 800, 
-            fontSize: "1.05rem", 
+            fontSize: "1.4rem", 
             letterSpacing: "0.05em", 
             whiteSpace: "nowrap",
             fontFamily: "'Outfit', sans-serif",
@@ -284,7 +303,7 @@ export default function App() {
             WebkitBackgroundClip: "text",
             WebkitTextFillColor: "transparent"
           }}>
-          AI CODE COMPLEXITY & QUALITY ANALYZER
+          AI Based Code Complexity and Risk Prediction System Using Machine Learning
           </span>
         </div>
 
@@ -309,8 +328,43 @@ export default function App() {
           <span style={{ fontSize: "0.85rem", color: COLORS.textMuted }}>
             By <b style={{ color: COLORS.textMain }}>Aniruddha Sonawane</b>
           </span>
-          <a href="https://github.com" target="_blank" style={{ color: COLORS.textMain, textDecoration: "none", fontSize: "0.8rem", border: `1px solid ${COLORS.border}`, padding: "6px 14px", borderRadius: "8px" }}>GitHub</a>
-          <a href="https://linkedin.com" target="_blank" style={{ color: COLORS.textMain, textDecoration: "none", fontSize: "0.8rem", border: `1px solid ${COLORS.border}`, padding: "6px 14px", borderRadius: "8px" }}>LinkedIn</a>
+<a
+  href="https://github.com/Aniruddha-Sonawane"
+  target="_blank"
+  style={{
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    color: COLORS.textMain,
+    textDecoration: "none",
+    fontSize: "0.8rem",
+    border: `1px solid ${COLORS.border}`,
+    padding: "6px 12px",
+    borderRadius: "10px"
+  }}
+>
+  <img src={githubLogo} alt="GitHub" style={{ width: 18, height: 18 }} />
+  GitHub
+</a>
+
+<a
+  href="https://www.linkedin.com/in/AniruddhaSonawane1"
+  target="_blank"
+  style={{
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    color: COLORS.textMain,
+    textDecoration: "none",
+    fontSize: "0.8rem",
+    border: `1px solid ${COLORS.border}`,
+    padding: "6px 12px",
+    borderRadius: "10px"
+  }}
+>
+  <img src={linkedinLogo} alt="LinkedIn" style={{ width: 18, height: 18 }} />
+  LinkedIn
+</a>
         </div>
       </nav>
 
@@ -343,10 +397,57 @@ export default function App() {
             </div>
 
             {result && (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px" }}>
-                <div style={cardStyle}><p style={{ color: COLORS.textMuted, fontSize: "0.75rem", fontWeight: "bold", marginBottom: "12px" }}>RISK ASSESSMENT</p>{badge(result.risk)}</div>
-                <div style={cardStyle}><p style={{ color: COLORS.textMuted, fontSize: "0.75rem", fontWeight: "bold", marginBottom: "12px" }}>OVERALL GRADE</p>{badge(result.quality_grade)}</div>
-                <div style={cardStyle}><p style={{ color: COLORS.textMuted, fontSize: "0.75rem", fontWeight: "bold", marginBottom: "12px" }}>COMPLEXITY</p><b style={{ color: COLORS.accent, fontSize: "1.1rem" }}>{result.time_complexity}</b></div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "20px" }}>
+                <div style={cardStyle}><p style={{
+  color: COLORS.textMuted,
+  fontSize: "1rem",   // ⬅ increased
+  fontWeight: 700,
+  marginBottom: "14px",
+  letterSpacing: "0.05em"
+}}>RISK ASSESSMENT</p>{badge(result.risk)}</div>
+<div style={cardStyle}>
+  <p
+    style={{
+      color: COLORS.textMuted,
+      fontSize: "1rem",
+      fontWeight: 700,
+      marginBottom: "14px",
+      letterSpacing: "0.05em"
+    }}
+  >
+    CONFIDENCE
+  </p>
+
+  <b
+    style={{
+      fontSize: "1.6rem",
+      fontWeight: 800,
+      color:
+        result.confidence >= 80
+          ? "#10b981"
+          : result.confidence >= 60
+          ? "#facc15"
+          : COLORS.danger
+    }}
+  >
+    {result.confidence}%
+  </b>
+</div>
+
+                <div style={cardStyle}><p style={{
+  color: COLORS.textMuted,
+  fontSize: "1rem",   // ⬅ increased
+  fontWeight: 700,
+  marginBottom: "14px",
+  letterSpacing: "0.05em"
+}}>OVERALL GRADE</p>{badge(result.quality_grade)}</div>
+                <div style={cardStyle}><p style={{
+  color: COLORS.textMuted,
+  fontSize: "1rem",   // ⬅ increased
+  fontWeight: 700,
+  marginBottom: "14px",
+  letterSpacing: "0.05em"
+}}>COMPLEXITY</p><b style={{ color: COLORS.accent, fontSize: "1.1rem" }}>{result.time_complexity}</b></div>
               </div>
             )}
           </div>
@@ -357,15 +458,15 @@ export default function App() {
               <>
                 <div style={cardStyle}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-                    <h3 style={{ fontSize: "0.9rem", color: COLORS.textMuted, margin: 0 }}>Complexity Graph</h3>
+                    <h3 style={{ fontSize: "1.5rem", color: COLORS.textMuted, margin: 0 }}>Complexity Graph</h3>
                     <button onClick={() => setIsGraphZoomOpen(true)} style={{ background: "transparent", border: "none", color: COLORS.accent, cursor: "pointer", fontSize: "0.8rem" }}>Expand ↗</button>
                   </div>
                   <ChartContent height={220} data={filteredFunctions} />
                 </div>
 
                 <div style={cardStyle}>
-                  <h3 style={{ fontSize: "0.9rem", color: COLORS.textMuted, marginBottom: "15px" }}>AI Observations</h3>
-                  <ul style={{ paddingLeft: "1.2rem", color: COLORS.textMuted, fontSize: "0.85rem", lineHeight: "1.7" }}>
+                  <h3 style={{ fontSize: "1.5rem", color: COLORS.textMuted, marginBottom: "0px" }}>AI Observations</h3>
+                  <ul style={{ paddingLeft: "1.2rem", color: COLORS.textMuted, fontSize: "1.2rem", lineHeight: "1.7" }}>
                     {result.explanations.map((e: string, i: number) => <li key={i} style={{ marginBottom: "10px" }}>{e}</li>)}
                   </ul>
                 </div>

@@ -73,6 +73,14 @@ function badge(text: string) {
   );
 }
 
+function riskColor(riskText: string) {
+  const risk = riskText.toLowerCase();
+  if (risk.includes("high")) return COLORS.danger;
+  if (risk.includes("medium")) return "#f59e0b";
+  if (risk.includes("low")) return "#10b981";
+  return COLORS.textMuted;
+}
+
 export default function App() {
   // --- 2. Create Reference for Editor ---
   const editorRef = useRef<any>(null);
@@ -425,14 +433,21 @@ export default function App() {
               <h2 style={{ margin: 0 }}>Analysis History</h2>
               <button onClick={() => setIsHistoryOpen(false)} style={{ background: "transparent", border: "none", color: COLORS.textMuted, fontSize: "2rem", cursor: "pointer" }}>&times;</button>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
-              {history.map((item) => (
-                <div key={item.id} onClick={() => { setCode(item.code); setResult(item.result); setIsHistoryOpen(false); }} 
-                     style={{ padding: "20px", border: `1px solid ${COLORS.border}`, borderRadius: "16px", cursor: "pointer", background: "rgba(255,255,255,0.02)" }}>
-                  <b style={{ color: COLORS.primary }}>Session #{item.id}</b>
-                  <p style={{ color: COLORS.textMuted, fontSize: "0.85rem", marginTop: "8px" }}>{item.result.functions.length} functions found • {item.result.quality_grade} Grade</p>
-                </div>
-              ))}
+            <div style={{ overflowY: "auto", flex: 1, minHeight: 0, paddingRight: "8px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+                {history.map((item) => (
+                  <div key={item.id} onClick={() => { setCode(item.code); setResult(item.result); setIsHistoryOpen(false); }} 
+                       style={{ padding: "20px", border: `1px solid ${COLORS.border}`, borderRadius: "16px", cursor: "pointer", background: "rgba(255,255,255,0.02)" }}>
+                    <b style={{ color: COLORS.primary }}>Session #{item.id}</b>
+                    <p style={{ color: COLORS.textMuted, fontSize: "0.85rem", marginTop: "8px", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                      <span style={{ color: riskColor(item.result.risk) }}>●</span>
+                      {item.result.risk}
+                      <span style={{ color: item.result.confidence >= 80 ? "#10b981" : item.result.confidence >= 60 ? "#facc15" : COLORS.danger }}>●</span>
+                      {item.result.confidence}%
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </>

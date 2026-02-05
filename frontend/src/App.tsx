@@ -277,18 +277,7 @@ export default function App() {
           </span>
         </div>
 
-        <div className="topbar-center">
-          {isSearchVisible && (
-            <input 
-              autoFocus
-              type="text"
-              placeholder="Filter functions..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="search-input"
-            />
-          )}
-        </div>
+        <div className="topbar-center" />
 
         <div className="topbar-actions">
           <span className="topbar-byline">
@@ -313,6 +302,43 @@ export default function App() {
 </a>
         </div>
       </nav>
+
+      {isSearchVisible && (
+        <>
+          <div
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: "transparent",
+              zIndex: 1001
+            }}
+            onClick={() => setIsSearchVisible(false)}
+          />
+          <div
+            style={{
+              position: "fixed",
+              top: "10px",
+              left: "50%",
+              transform: "translateX(-18.75%) translateY(12.5%)",
+              width: "min(920px, 92vw)",
+              zIndex: 1002
+            }}
+          >
+            <input
+              autoFocus
+              type="text"
+              placeholder="Filter functions..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="search-input"
+              style={{ width: "100%" }}
+            />
+          </div>
+        </>
+      )}
 
       <main className="main">
         <div className="layout">

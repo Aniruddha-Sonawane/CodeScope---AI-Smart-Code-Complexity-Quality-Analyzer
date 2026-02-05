@@ -23,7 +23,7 @@
   align-items: center;
   gap: 14px;
   cursor: pointer;
-  max-width: 680px;
+  max-width: none;
 }
 
 .brand-title {
@@ -35,9 +35,9 @@
   background: linear-gradient(120deg, #eef2ff, #9fb0cc 60%, #7dd3fc);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .topbar-center {
@@ -50,7 +50,7 @@
 .search-input {
   width: 100%;
   max-width: 420px;
-  background: rgba(13, 20, 38, 0.8);
+  background: #0d1426;
   border: 1px solid rgba(79, 107, 255, 0.35);
   border-radius: 12px;
   padding: 10px 16px;

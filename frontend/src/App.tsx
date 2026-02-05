@@ -89,6 +89,7 @@ export default function App() {
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
+  const [isEditorExpanded, setIsEditorExpanded] = useState(false);
   
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isGraphZoomOpen, setIsGraphZoomOpen] = useState(false);
@@ -119,6 +120,7 @@ export default function App() {
   
   async function analyze() {
     setLoading(true);
+    const startTime = Date.now();
     // Simulating result for demo purposes if backend isn't running
     // Replace with your actual fetch if backend is live
     try {
@@ -131,6 +133,11 @@ export default function App() {
         setResult(data);
     } catch (e) {
         console.error("Backend not connected");
+    }
+    const elapsed = Date.now() - startTime;
+    const minDuration = 1000;
+    if (elapsed < minDuration) {
+      await new Promise((resolve) => setTimeout(resolve, minDuration - elapsed));
     }
     setLoading(false);
   }
@@ -261,7 +268,61 @@ export default function App() {
         </Bar>
       </BarChart>
     </ResponsiveContainer>
+  );  const StatsCards = () => (
+    <>
+      <div className="card"><p style={{
+        color: COLORS.textMuted,
+        fontSize: "1rem",
+        fontWeight: 700,
+        marginBottom: "14px",
+        letterSpacing: "0.05em"
+      }}>RISK ASSESSMENT</p>{badge(result.risk)}</div>
+      <div className="card">
+        <p
+          style={{
+            color: COLORS.textMuted,
+            fontSize: "1rem",
+            fontWeight: 700,
+            marginBottom: "14px",
+            letterSpacing: "0.05em"
+          }}
+        >
+          CONFIDENCE
+        </p>
+
+        <b
+          style={{
+            fontSize: "1.6rem",
+            fontWeight: 800,
+            color:
+              result.confidence >= 80
+                ? "#10b981"
+                : result.confidence >= 60
+                ? "#facc15"
+                : COLORS.danger
+          }}
+        >
+          {result.confidence}%
+        </b>
+      </div>
+      <div className="card"><p style={{
+        color: COLORS.textMuted,
+        fontSize: "1rem",
+        fontWeight: 700,
+        marginBottom: "14px",
+        letterSpacing: "0.05em"
+      }}>OVERALL GRADE</p>{badge(result.quality_grade)}</div>
+      <div className="card"><p style={{
+        color: COLORS.textMuted,
+        fontSize: "1rem",
+        fontWeight: 700,
+        marginBottom: "14px",
+        letterSpacing: "0.05em"
+      }}>COMPLEXITY</p><b style={{ color: COLORS.accent, fontSize: "1.1rem" }}>{result.time_complexity}</b></div>
+    </>
   );
+
+
 
   return (
 <div className="app">
@@ -340,86 +401,60 @@ export default function App() {
         </>
       )}
 
+      {loading && (
+        <div className="loading-overlay" role="status" aria-live="polite" aria-label="Analyzing">
+          <div className="loading-spinner" />
+          <div className="loading-text">Analyzing...</div>
+        </div>
+      )}
+
       <main className="main">
         <div className="layout">
           
           {/* LEFT SIDE */}
           <div>
-            <div className="card">
-              <div className="editor-shell">
-                {/* 5. Attach Editor Ref via onMount */}
-                <Editor 
-                    height="420px" 
-                    defaultLanguage="python" 
-                    value={code} 
-                    theme="vs-dark" 
-                    onChange={(v) => setCode(v || "")} 
-                    onMount={(editor) => { editorRef.current = editor; }} 
-                />
+            <div className={`editor-and-stats ${isEditorExpanded ? "expanded" : "collapsed"}`}>
+              <div className="card editor-card">
+                <div className="editor-shell">
+                  {/* 5. Attach Editor Ref via onMount */}
+                  <Editor 
+                      height="420px" 
+                      defaultLanguage="python" 
+                      value={code} 
+                      theme="vs-dark" 
+                      onChange={(v) => setCode(v || "")} 
+                      onMount={(editor) => { editorRef.current = editor; }} 
+                  />
+                </div>
+                <div className="actions">
+                  <button onClick={analyze} className="btn btn-primary">
+                    {loading ? "Analyzing..." : "Analyze Now"}
+                  </button>
+                  <button onClick={loadHistory} className="btn btn-outline">
+                    History
+                  </button>
+                  <button
+                    onClick={() => setIsEditorExpanded(!isEditorExpanded)}
+                    className="btn btn-ghost"
+                    aria-label={isEditorExpanded ? "Minimize editor" : "Expand editor"}
+                    title={isEditorExpanded ? "Minimize editor" : "Expand editor"}
+                  >
+                    {isEditorExpanded ? "Minimize" : "Expand"}
+                  </button>
+                  {result && <button onClick={downloadReport} className="btn btn-ghost">Download PDF</button>}
+                </div>
               </div>
-              <div className="actions">
-                <button onClick={analyze} className="btn btn-primary">
-                  {loading ? "Analyzing..." : "Analyze Now"}
-                </button>
-                <button onClick={loadHistory} className="btn btn-outline">
-                  📜 History
-                </button>
-                {result && <button onClick={downloadReport} className="btn btn-ghost">Download PDF</button>}
-              </div>
+
+              {!isEditorExpanded && result && (
+                <div className="stats-column">
+                  <StatsCards />
+                </div>
+              )}
             </div>
 
-            {result && (
+            {isEditorExpanded && result && (
               <div className="stats-grid">
-                <div className="card"><p style={{
-  color: COLORS.textMuted,
-  fontSize: "1rem",   // ⬅ increased
-  fontWeight: 700,
-  marginBottom: "14px",
-  letterSpacing: "0.05em"
-}}>RISK ASSESSMENT</p>{badge(result.risk)}</div>
-<div className="card">
-  <p
-    style={{
-      color: COLORS.textMuted,
-      fontSize: "1rem",
-      fontWeight: 700,
-      marginBottom: "14px",
-      letterSpacing: "0.05em"
-    }}
-  >
-    CONFIDENCE
-  </p>
-
-  <b
-    style={{
-      fontSize: "1.6rem",
-      fontWeight: 800,
-      color:
-        result.confidence >= 80
-          ? "#10b981"
-          : result.confidence >= 60
-          ? "#facc15"
-          : COLORS.danger
-    }}
-  >
-    {result.confidence}%
-  </b>
-</div>
-
-                <div className="card"><p style={{
-  color: COLORS.textMuted,
-  fontSize: "1rem",   // ⬅ increased
-  fontWeight: 700,
-  marginBottom: "14px",
-  letterSpacing: "0.05em"
-}}>OVERALL GRADE</p>{badge(result.quality_grade)}</div>
-                <div className="card"><p style={{
-  color: COLORS.textMuted,
-  fontSize: "1rem",   // ⬅ increased
-  fontWeight: 700,
-  marginBottom: "14px",
-  letterSpacing: "0.05em"
-}}>COMPLEXITY</p><b style={{ color: COLORS.accent, fontSize: "1.1rem" }}>{result.time_complexity}</b></div>
+                <StatsCards />
               </div>
             )}
           </div>
@@ -436,7 +471,7 @@ export default function App() {
                   <ChartContent height={220} data={filteredFunctions} />
                 </div>
 
-                <div className="card">
+                <div className="card observations-card">
                   <h3 className="card-title">AI Observations</h3>
                   <ul className="observations">
                     {result.explanations.map((e: string, i: number) => <li key={i} style={{ marginBottom: "10px" }}>{e}</li>)}

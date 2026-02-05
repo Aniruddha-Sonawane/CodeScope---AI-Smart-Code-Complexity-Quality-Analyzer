@@ -101,6 +101,38 @@
   padding: 28px 24px 80px;
 }
 
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(2, 6, 23, 0.45);
+  backdrop-filter: blur(8px);
+  z-index: 2000;
+}
+
+.loading-spinner {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  border: 4px solid rgba(148, 163, 184, 0.35);
+  border-top-color: var(--primary);
+  animation: spin 1s linear infinite;
+}
+
+.loading-text {
+  color: var(--text);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .layout {
   display: grid;
   grid-template-columns: minmax(0, 2.1fr) minmax(0, 1fr);
@@ -121,6 +153,32 @@
   overflow: hidden;
   border: 1px solid var(--border);
   background: #0b1220;
+  position: relative;
+}
+
+.editor-and-stats {
+  display: grid;
+  gap: 18px;
+  align-items: start;
+}
+
+.editor-and-stats.collapsed {
+  grid-template-columns: minmax(0, 1fr) 260px;
+}
+
+.editor-and-stats.expanded {
+  grid-template-columns: 1fr;
+}
+
+.stats-column {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.editor-toggle:hover {
+  border-color: var(--primary);
+  box-shadow: 0 6px 16px rgba(79, 107, 255, 0.2);
 }
 
 .actions {
@@ -216,6 +274,15 @@
   font-size: 1rem;
   line-height: 1.6;
   margin: 8px 0 0 0;
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.observations-card {
+  display: flex;
+  flex-direction: column;
+  max-height: 420px;
 }
 
 @media (max-width: 1200px) {
@@ -252,6 +319,10 @@
 
   .sidebar {
     position: static;
+  }
+
+  .editor-and-stats.collapsed {
+    grid-template-columns: 1fr;
   }
 }
 

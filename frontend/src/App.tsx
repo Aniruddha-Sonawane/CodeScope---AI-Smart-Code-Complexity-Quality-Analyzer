@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef } from "react"; // 1. Imported useRef
+import "./App.css";
 import Editor from "@monaco-editor/react";
 import {
   BarChart,
@@ -26,16 +27,6 @@ const COLORS = {
   accent: "#22d3ee",
   danger: "#ef4444",
   modalOverlay: "rgba(0, 0, 0, 0.9)"
-};
-
-const cardStyle: React.CSSProperties = {
-  
-  background: COLORS.card,
-  padding: "22px",
-  fontSize: "1.25rem",
-  borderRadius: "16px",
-  border: `1px solid ${COLORS.border}`,
-  marginBottom: "20px",
 };
 
 const modalStyle: React.CSSProperties = {
@@ -265,49 +256,20 @@ export default function App() {
   );
 
   return (
-<div
-  style={{
-    fontSize: "1.05rem",
-    background: COLORS.bg,
-    minHeight: "100vh",
-    color: COLORS.textMain,
-    fontFamily: "'Inter', sans-serif",
-    transform: "scale(0.8)",          // 🔽 zoom out 20%
-    transformOrigin: "top center",
-    width: "125%",                    // compensate scaling
-    marginLeft: "-12.5%",
-    overflow: "hidden"
-    
-  }}
->
-
-      
-      {/* ================= TOPBAR ================= */}
-      <nav style={{
-        position: "sticky", top: 0, zIndex: 100, background: "rgba(2, 6, 23, 0.85)",
-        backdropFilter: "blur(12px)", borderBottom: `1px solid ${COLORS.border}`,
-        padding: "0 40px", height: "70px", display: "flex", alignItems: "center"
-      }}>
+<div className="app">
+{/* ================= TOPBAR ================= */}
+      <nav className="topbar">
         <div 
           onClick={() => setIsSearchVisible(!isSearchVisible)} 
-          style={{ display: "flex", alignItems: "center", gap: "15px", cursor: "pointer" }}
+          className="brand"
         >
           <img src={logoImg} alt="Logo" style={{ width: 42, height: 42, borderRadius: "10px", objectFit: "contain" }} />
-          <span style={{ 
-            fontWeight: 800, 
-            fontSize: "1.4rem", 
-            letterSpacing: "0.05em", 
-            whiteSpace: "nowrap",
-            fontFamily: "'Outfit', sans-serif",
-            background: `linear-gradient(to right, ${COLORS.textMain}, ${COLORS.textMuted})`,
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent"
-          }}>
+          <span className="brand-title">
           AI Based Code Complexity and Risk Prediction System Using Machine Learning
           </span>
         </div>
 
-        <div style={{ flex: 1, display: "flex", justifyContent: "center", padding: "0 40px" }}>
+        <div className="topbar-center">
           {isSearchVisible && (
             <input 
               autoFocus
@@ -315,33 +277,19 @@ export default function App() {
               placeholder="Filter functions..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              style={{
-                width: "100%", maxWidth: "450px", background: "rgba(15, 23, 42, 0.6)",
-                border: `1px solid ${COLORS.primary}88`, borderRadius: "12px",
-                padding: "10px 20px", color: "#fff", outline: "none", fontSize: "0.9rem"
-              }}
+              className="search-input"
             />
           )}
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
-          <span style={{ fontSize: "0.85rem", color: COLORS.textMuted }}>
+        <div className="topbar-actions">
+          <span className="topbar-byline">
             By <b style={{ color: COLORS.textMain }}>Aniruddha Sonawane</b>
           </span>
 <a
   href="https://github.com/Aniruddha-Sonawane"
   target="_blank"
-  style={{
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    color: COLORS.textMain,
-    textDecoration: "none",
-    fontSize: "0.8rem",
-    border: `1px solid ${COLORS.border}`,
-    padding: "6px 12px",
-    borderRadius: "10px"
-  }}
+  className="pill-link"
 >
   <img src={githubLogo} alt="GitHub" style={{ width: 18, height: 18 }} />
   GitHub
@@ -350,17 +298,7 @@ export default function App() {
 <a
   href="https://www.linkedin.com/in/AniruddhaSonawane1"
   target="_blank"
-  style={{
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    color: COLORS.textMain,
-    textDecoration: "none",
-    fontSize: "0.8rem",
-    border: `1px solid ${COLORS.border}`,
-    padding: "6px 12px",
-    borderRadius: "10px"
-  }}
+  className="pill-link"
 >
   <img src={linkedinLogo} alt="LinkedIn" style={{ width: 18, height: 18 }} />
   LinkedIn
@@ -368,13 +306,13 @@ export default function App() {
         </div>
       </nav>
 
-      <main style={{ maxWidth: "1500px", margin: "0 auto", padding: "30px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "2.2fr 1fr", gap: "25px" }}>
+      <main className="main">
+        <div className="layout">
           
           {/* LEFT SIDE */}
           <div>
-            <div style={cardStyle}>
-              <div style={{ borderRadius: "12px", overflow: "hidden", border: `1px solid ${COLORS.border}` }}>
+            <div className="card">
+              <div className="editor-shell">
                 {/* 5. Attach Editor Ref via onMount */}
                 <Editor 
                     height="420px" 
@@ -385,27 +323,27 @@ export default function App() {
                     onMount={(editor) => { editorRef.current = editor; }} 
                 />
               </div>
-              <div style={{ marginTop: "24px", display: "flex", gap: "12px" }}>
-                <button onClick={analyze} style={{ background: COLORS.primary, color: "#fff", border: "none", padding: "12px 28px", borderRadius: "10px", fontWeight: "bold", cursor: "pointer" }}>
+              <div className="actions">
+                <button onClick={analyze} className="btn btn-primary">
                   {loading ? "Analyzing..." : "Analyze Now"}
                 </button>
-                <button onClick={loadHistory} style={{ background: "transparent", color: COLORS.textMain, border: `1px solid ${COLORS.border}`, padding: "12px 28px", borderRadius: "10px", cursor: "pointer" }}>
+                <button onClick={loadHistory} className="btn btn-outline">
                   📜 History
                 </button>
-                {result && <button onClick={downloadReport} style={{ background: "transparent", color: COLORS.textMuted, border: "none", cursor: "pointer", marginLeft: "auto" }}>Download PDF</button>}
+                {result && <button onClick={downloadReport} className="btn btn-ghost">Download PDF</button>}
               </div>
             </div>
 
             {result && (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "20px" }}>
-                <div style={cardStyle}><p style={{
+              <div className="stats-grid">
+                <div className="card"><p style={{
   color: COLORS.textMuted,
   fontSize: "1rem",   // ⬅ increased
   fontWeight: 700,
   marginBottom: "14px",
   letterSpacing: "0.05em"
 }}>RISK ASSESSMENT</p>{badge(result.risk)}</div>
-<div style={cardStyle}>
+<div className="card">
   <p
     style={{
       color: COLORS.textMuted,
@@ -434,14 +372,14 @@ export default function App() {
   </b>
 </div>
 
-                <div style={cardStyle}><p style={{
+                <div className="card"><p style={{
   color: COLORS.textMuted,
   fontSize: "1rem",   // ⬅ increased
   fontWeight: 700,
   marginBottom: "14px",
   letterSpacing: "0.05em"
 }}>OVERALL GRADE</p>{badge(result.quality_grade)}</div>
-                <div style={cardStyle}><p style={{
+                <div className="card"><p style={{
   color: COLORS.textMuted,
   fontSize: "1rem",   // ⬅ increased
   fontWeight: 700,
@@ -453,20 +391,20 @@ export default function App() {
           </div>
 
           {/* RIGHT SIDE */}
-          <div style={{ position: "sticky", top: "100px" }}>
+          <div className="sidebar">
             {result && (
               <>
-                <div style={cardStyle}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-                    <h3 style={{ fontSize: "1.5rem", color: COLORS.textMuted, margin: 0 }}>Complexity Graph</h3>
-                    <button onClick={() => setIsGraphZoomOpen(true)} style={{ background: "transparent", border: "none", color: COLORS.accent, cursor: "pointer", fontSize: "0.8rem" }}>Expand ↗</button>
+                <div className="card">
+                  <div className="card-header">
+                    <h3 className="card-title">Complexity Graph</h3>
+                    <button onClick={() => setIsGraphZoomOpen(true)} className="btn btn-link">Expand ↗</button>
                   </div>
                   <ChartContent height={220} data={filteredFunctions} />
                 </div>
 
-                <div style={cardStyle}>
-                  <h3 style={{ fontSize: "1.5rem", color: COLORS.textMuted, marginBottom: "0px" }}>AI Observations</h3>
-                  <ul style={{ paddingLeft: "1.2rem", color: COLORS.textMuted, fontSize: "1.2rem", lineHeight: "1.7" }}>
+                <div className="card">
+                  <h3 className="card-title">AI Observations</h3>
+                  <ul className="observations">
                     {result.explanations.map((e: string, i: number) => <li key={i} style={{ marginBottom: "10px" }}>{e}</li>)}
                   </ul>
                 </div>

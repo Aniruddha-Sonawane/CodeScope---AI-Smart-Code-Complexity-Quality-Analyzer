@@ -17,6 +17,9 @@ import logoImg from "./assets/logo.png";
 import githubLogo from "./assets/github.png";
 import linkedinLogo from "./assets/linkedin.png";
 
+const API_BASE =
+  import.meta.env.VITE_API_URL ||
+  "https://ai-based-code-complexity-and-risk.onrender.com";
 const COLORS = {
   bg: "#020617",
   card: "#0f172a",
@@ -124,7 +127,8 @@ export default function App() {
     // Simulating result for demo purposes if backend isn't running
     // Replace with your actual fetch if backend is live
     try {
-        const res = await fetch("http://127.0.0.1:8000/analyze", {
+        
+        const res = await fetch(`${API_BASE}/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code })
@@ -235,7 +239,7 @@ export default function App() {
 
   async function loadHistory() {
     try {
-        const res = await fetch("http://127.0.0.1:8000/history");
+        const res = await fetch(`${API_BASE}/history`);
         const data = await res.json();
         setHistory(data);
         setIsHistoryOpen(true);

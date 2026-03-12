@@ -9,8 +9,8 @@ from quality_engine import calculate_quality_score
 from feature_extractor import extract_features, extract_features_generic
 from complexity_analyzer import estimate_complexity, estimate_complexity_generic
 
-# NOTE: lizard is imported lazily inside analyze_code() so that a missing
-# install does NOT crash the server on startup — Python analysis still works.
+# NOTE: lizard is imported lazily inside analyze_code() so a missing install
+# does NOT crash the server on startup — Python analysis still works fine.
 
 # ----------------------------
 # App Init
@@ -30,7 +30,7 @@ app.add_middleware(
 # ----------------------------
 model = joblib.load("risk_model_v2.pkl")
 
-# Map our language keys to lizard-recognised file extensions
+# Map language keys to lizard file extensions
 LIZARD_EXT_MAP = {
     "python":     ".py",
     "javascript": ".js",
@@ -44,7 +44,7 @@ LIZARD_EXT_MAP = {
 # ----------------------------
 class CodeRequest(BaseModel):
     code: str
-    language: str = "python"   # defaults to python for backward-compat
+    language: str = "python"
 
 
 # ----------------------------
@@ -57,28 +57,21 @@ def analyze_code(req: CodeRequest):
     warnings  = []
 
     # ------------------------
-    # Extract Complexity Metrics (language-aware)
+    # Cyclomatic Complexity (language-aware)
     # ------------------------
     if req.language == "python":
-        # radon gives the best results for Python
         from radon.complexity import cc_visit
-        results = cc_visit(req.code)
-        for r in results:
+        for r in cc_visit(req.code):
             functions.append({"name": r.name, "complexity": r.complexity, "line": r.lineno})
             if r.complexity >= 10:
                 warnings.append(f"Function '{r.name}' is very complex (CC={r.complexity}). Consider refactoring.")
             elif r.complexity >= 5:
                 warnings.append(f"Function '{r.name}' is moderately complex (CC={r.complexity}). Review logic.")
     else:
-        # lizard handles JS / Java / C / C++
-        # Imported lazily so a missing install doesn't crash the whole server
         try:
             import lizard as _lizard
         except ImportError:
-            raise RuntimeError(
-                "lizard is not installed on the server. "
-                "Add 'lizard' to requirements.txt and redeploy."
-            )
+            raise RuntimeError("lizard is not installed. Add 'lizard' to requirements.txt and redeploy.")
         ext = LIZARD_EXT_MAP.get(req.language, ".txt")
         liz = _lizard.analyze_file.analyze_source_code(f"file{ext}", req.code)
         for fn in liz.function_list:
@@ -114,7 +107,7 @@ def analyze_code(req: CodeRequest):
     prediction = int(np.argmax(proba))
     confidence = float(np.max(proba))
 
-    risk_map   = {0: "Low Risk", 1: "Medium Risk", 2: "High Risk"}
+    risk_map   = {0: "Low Risk 🟢", 1: "Medium Risk 🟡", 2: "High Risk 🔴"}
     ml_risk    = risk_map[prediction]
     final_risk = ml_risk
 
@@ -127,50 +120,41 @@ def analyze_code(req: CodeRequest):
     if mem_allocs > 0:
         danger_score += 2
         explanations.append("Memory allocation detected (possible leak)")
-
     if globals_ >= 3:
         danger_score += 2
         explanations.append("Many global mutable variables")
-
     if asyncs > 0 and threads > 0:
         danger_score += 2
         explanations.append("Async mixed with threading")
-
     if random_calls >= 3:
         danger_score += 2
         explanations.append("Frequent random behavior detected")
-
     if locks >= 2 and threads >= 3:
         danger_score += 1
         explanations.append("Multiple locks with many threads")
-
     if infinite_loops >= 2 and random_calls >= 2:
         danger_score += 2
         explanations.append("Unstable infinite loops detected")
-
     if infinite_loops >= 3:
         danger_score += 1
         explanations.append("Heavy infinite looping")
-
     if threads >= 5:
         danger_score += 1
         explanations.append("High thread count")
 
-    # Baseline
     if infinite_loops > 0:
-        baseline_risk = "Medium Risk"
+        baseline_risk = "Medium Risk 🟡"
         explanations.append("Infinite loop detected")
     elif threads >= 1:
-        baseline_risk = "Medium Risk"
+        baseline_risk = "Medium Risk 🟡"
         explanations.append("Concurrent system detected")
     else:
         baseline_risk = ml_risk
 
-    # Final Risk
     if danger_score >= 4:
-        final_risk = "High Risk"
+        final_risk = "High Risk 🔴"
     elif danger_score >= 2:
-        final_risk = "Medium Risk"
+        final_risk = "Medium Risk 🟡"
     else:
         final_risk = baseline_risk
 
@@ -204,36 +188,8 @@ def analyze_code(req: CodeRequest):
         danger_score=danger_score
     )
 
-    # ------------------------
-    # Save to Database
-    # ------------------------
-    db = SessionLocal()
-    record = Analysis(
-        code=req.code,
-        language=req.language,
-        result={
-            "functions":       functions,
-            "warnings":        warnings,
-            "risk":            final_risk,
-            "ml_risk":         ml_risk,
-            "confidence":      round(confidence * 100, 2),
-            "features":        features,
-            "explanations":    explanations,
-            "danger_score":    danger_score,
-            "time_complexity": time_complexity,
-            "quality_score":   quality_score,
-            "quality_grade":   quality_grade,
-            "quality_reasons": quality_reasons
-        }
-    )
-    db.add(record)
-    db.commit()
-    db.close()
-
-    # ------------------------
-    # API Response
-    # ------------------------
-    return {
+    # Build response payload first — returned even if DB save fails
+    payload = {
         "functions":       functions,
         "warnings":        warnings,
         "risk":            final_risk,
@@ -248,22 +204,43 @@ def analyze_code(req: CodeRequest):
         "quality_reasons": quality_reasons
     }
 
+    # ------------------------
+    # Save to Database (non-fatal — analysis result is returned regardless)
+    # ------------------------
+    try:
+        db = SessionLocal()
+        record = Analysis(
+            code=req.code,
+            language=req.language,
+            result=payload
+        )
+        db.add(record)
+        db.commit()
+        db.close()
+    except Exception as e:
+        print(f"WARNING: DB save failed (non-fatal): {e}")
+
+    return payload
+
 
 # ----------------------------
 # History Endpoint
 # ----------------------------
 @app.get("/history")
 def get_history():
-    db      = SessionLocal()
-    records = db.query(Analysis).order_by(Analysis.id.desc()).limit(20).all()
-    db.close()
-
-    return [
-        {
-            "id":       r.id,
-            "code":     r.code,
-            "language": getattr(r, "language", "python"),
-            "result":   r.result
-        }
-        for r in records
-    ]
+    try:
+        db      = SessionLocal()
+        records = db.query(Analysis).order_by(Analysis.id.desc()).limit(20).all()
+        db.close()
+        return [
+            {
+                "id":       r.id,
+                "code":     r.code,
+                "language": getattr(r, "language", "python"),
+                "result":   r.result
+            }
+            for r in records
+        ]
+    except Exception as e:
+        print(f"WARNING: History fetch failed: {e}")
+        return []

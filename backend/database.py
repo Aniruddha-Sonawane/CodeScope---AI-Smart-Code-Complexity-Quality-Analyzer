@@ -15,8 +15,11 @@ Base = declarative_base()
 class Analysis(Base):
     __tablename__ = "analysis"
 
-    id = Column(Integer, primary_key=True, index=True)
-    code = Column(String)
-    result = Column(JSON)
+    id       = Column(Integer, primary_key=True, index=True)
+    code     = Column(String)
+    # ── NEW: store which language was analysed ────────────────────────────────
+    language = Column(String, default="python")
+    # ─────────────────────────────────────────────────────────────────────────
+    result   = Column(JSON)
 
 Base.metadata.create_all(bind=engine)

@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react"; // 1. Imported useRef
+import { useState, useMemo, useRef } from "react";
 import "./App.css";
 import Editor from "@monaco-editor/react";
 import {
@@ -20,6 +20,7 @@ import linkedinLogo from "./assets/linkedin.png";
 const API_BASE =
   import.meta.env.VITE_API_URL ||
   "https://ai-based-code-complexity-and-risk.onrender.com";
+
 const COLORS = {
   bg: "#020617",
   card: "#0f172a",
@@ -32,6 +33,24 @@ const COLORS = {
   modalOverlay: "rgba(0, 0, 0, 0.9)"
 };
 
+// ─── Language config ────────────────────────────────────────────────────────
+const LANGUAGES = [
+  { value: "python",     label: "Python",     monacoId: "python" },
+  { value: "javascript", label: "JavaScript", monacoId: "javascript" },
+  { value: "java",       label: "Java",       monacoId: "java" },
+  { value: "c",          label: "C",          monacoId: "c" },
+  { value: "cpp",        label: "C++",        monacoId: "cpp" },
+];
+
+const DEFAULT_SNIPPETS: Record<string, string> = {
+  python: `def example():\n    for i in range(10):\n        if i % 2 == 0:\n            print(i)`,
+  javascript: `function example() {\n    for (let i = 0; i < 10; i++) {\n        if (i % 2 === 0) {\n            console.log(i);\n        }\n    }\n}`,
+  java: `public class Example {\n    public static void main(String[] args) {\n        for (int i = 0; i < 10; i++) {\n            if (i % 2 == 0) {\n                System.out.println(i);\n            }\n        }\n    }\n}`,
+  c: `#include <stdio.h>\n\nint main() {\n    for (int i = 0; i < 10; i++) {\n        if (i % 2 == 0) {\n            printf("%d\\n", i);\n        }\n    }\n    return 0;\n}`,
+  cpp: `#include <iostream>\nusing namespace std;\n\nint main() {\n    for (int i = 0; i < 10; i++) {\n        if (i % 2 == 0) {\n            cout << i << endl;\n        }\n    }\n    return 0;\n}`,
+};
+// ────────────────────────────────────────────────────────────────────────────
+
 const modalStyle: React.CSSProperties = {
   position: "fixed",
   top: "50%",
@@ -43,13 +62,14 @@ const modalStyle: React.CSSProperties = {
   padding: "24px",
   zIndex: 1001,
   width: "90%",
-  maxWidth: "850px", 
-  height: "500px",    
+  maxWidth: "850px",
+  height: "500px",
   display: "flex",
   flexDirection: "column",
   boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.8)",
   overflow: "hidden"
 };
+
 const overlayStyle: React.CSSProperties = {
   position: "fixed",
   top: 0, left: 0, right: 0, bottom: 0,
@@ -62,7 +82,7 @@ function badge(text: string) {
   let color = COLORS.textMuted;
   if (text.includes("Low") || text.includes("Excellent")) color = "#10b981";
   else if (text.includes("High") || text.includes("Poor")) color = COLORS.danger;
-  
+
   return (
     <span style={{
       background: `${color}15`,
@@ -85,15 +105,17 @@ function riskColor(riskText: string) {
 }
 
 export default function App() {
-  // --- 2. Create Reference for Editor ---
   const editorRef = useRef<any>(null);
 
-  const [code, setCode] = useState<string>(`def example():\n    for i in range(10):\n        if i % 2 == 0:\n            print(i)`);
+  // ── NEW: language state ──────────────────────────────────────────────────
+  const [language, setLanguage] = useState<string>("python");
+  // ────────────────────────────────────────────────────────────────────────
+
+  const [code, setCode] = useState<string>(DEFAULT_SNIPPETS["python"]);
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
   const [isEditorExpanded, setIsEditorExpanded] = useState(false);
-  
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isGraphZoomOpen, setIsGraphZoomOpen] = useState(false);
   const [isSearchVisible, setIsSearchVisible] = useState(false);
@@ -101,42 +123,43 @@ export default function App() {
 
   const filteredFunctions = useMemo(() => {
     if (!result?.functions) return [];
-    return result.functions.filter((fn: any) => 
+    return result.functions.filter((fn: any) =>
       fn.name.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [result, searchTerm]);
 
-  // --- 3. Function to handle jumping to code line ---
-  const handleFunctionClick = (line: number) => {
-    // If the modal is open, close it so we can see the editor
-    setIsGraphZoomOpen(false);
+  // ── NEW: switch language & load default snippet ──────────────────────────
+  const handleLanguageChange = (lang: string) => {
+    setLanguage(lang);
+    setCode(DEFAULT_SNIPPETS[lang] || "");
+    setResult(null);
+  };
+  // ────────────────────────────────────────────────────────────────────────
 
+  const handleFunctionClick = (line: number) => {
+    setIsGraphZoomOpen(false);
     if (editorRef.current && line) {
-      // Reveal the line in the center of the editor
       editorRef.current.revealLineInCenter(line);
-      // Move cursor to that line
       editorRef.current.setPosition({ lineNumber: line, column: 1 });
-      // Focus the editor
       editorRef.current.focus();
     }
   };
-  
+
   async function analyze() {
     setLoading(true);
     const startTime = Date.now();
-    // Simulating result for demo purposes if backend isn't running
-    // Replace with your actual fetch if backend is live
     try {
-        
-        const res = await fetch(`${API_BASE}/analyze`, {
+      const res = await fetch(`${API_BASE}/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code })
-        });
-        const data = await res.json();
-        setResult(data);
+        // ── CHANGED: send language alongside code ──────────────────────────
+        body: JSON.stringify({ code, language })
+        // ──────────────────────────────────────────────────────────────────
+      });
+      const data = await res.json();
+      setResult(data);
     } catch (e) {
-        console.error("Backend not connected");
+      console.error("Backend not connected");
     }
     const elapsed = Date.now() - startTime;
     const minDuration = 1000;
@@ -152,14 +175,14 @@ export default function App() {
     const pageWidth = doc.internal.pageSize.getWidth();
     const cleanStr = (str: string) => str.replace(/[^\x00-\x7F]/g, "").trim();
 
-    doc.setFillColor(15, 23, 42); 
+    doc.setFillColor(15, 23, 42);
     doc.rect(0, 0, pageWidth, 40, "F");
-    
+
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(20);
     doc.setFont("helvetica", "bold");
     doc.text("CODESCOPE AI ANALYSIS", 20, 25);
-    
+
     doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
     doc.text(`REPORT ID: ${Math.random().toString(36).substr(2, 9).toUpperCase()}`, 20, 32);
@@ -169,10 +192,10 @@ export default function App() {
     doc.setTextColor(15, 23, 42);
     doc.setFontSize(14);
     doc.text("EXECUTIVE METRICS", 20, yPos);
-    
+
     yPos += 10;
     const colW = (pageWidth - 40) / 3;
-    
+
     doc.setFontSize(9);
     doc.setTextColor(148, 163, 184);
     doc.text("QUALITY GRADE", 20, yPos);
@@ -198,19 +221,19 @@ export default function App() {
 
     yPos += 25;
     doc.setDrawColor(226, 232, 240);
-    doc.line(20, yPos, pageWidth - 20, yPos); 
-    
+    doc.line(20, yPos, pageWidth - 20, yPos);
+
     yPos += 15;
     doc.setTextColor(15, 23, 42);
     doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
     doc.text("AI OBSERVATIONS", 20, yPos);
-    
+
     yPos += 10;
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(71, 85, 105);
-    
+
     result.explanations.forEach((obs: string) => {
       const splitText = doc.splitTextToSize(`> ${cleanStr(obs)}`, pageWidth - 40);
       if (yPos + 20 > 280) { doc.addPage(); yPos = 20; }
@@ -239,26 +262,24 @@ export default function App() {
 
   async function loadHistory() {
     try {
-        const res = await fetch(`${API_BASE}/history`);
-        const data = await res.json();
-        setHistory(data);
-        setIsHistoryOpen(true);
-    } catch(e) { console.error("Backend not connected"); }
+      const res = await fetch(`${API_BASE}/history`);
+      const data = await res.json();
+      setHistory(data);
+      setIsHistoryOpen(true);
+    } catch (e) { console.error("Backend not connected"); }
   }
 
-  // --- 4. Pass click handler to BarChart ---
   const ChartContent = ({ height = 200, data = [] }: { height?: number, data?: any[] }) => (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
-        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: COLORS.textMuted, fontSize: 10}} />
-        <YAxis axisLine={false} tickLine={false} tick={{fill: COLORS.textMuted, fontSize: 10}} />
-        <Tooltip cursor={{fill: '#ffffff0a'}} contentStyle={{ background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: '12px' }} />
-        <Bar 
-          dataKey="complexity" 
-          radius={[6, 6, 0, 0]} 
-          barSize={40} 
-          // FIX IS HERE: Type as 'any' and access 'payload.line'
+        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: COLORS.textMuted, fontSize: 10 }} />
+        <YAxis axisLine={false} tickLine={false} tick={{ fill: COLORS.textMuted, fontSize: 10 }} />
+        <Tooltip cursor={{ fill: '#ffffff0a' }} contentStyle={{ background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: '12px' }} />
+        <Bar
+          dataKey="complexity"
+          radius={[6, 6, 0, 0]}
+          barSize={40}
           onClick={(data: any) => {
             if (data && data.payload && data.payload.line) {
               handleFunctionClick(data.payload.line);
@@ -272,73 +293,34 @@ export default function App() {
         </Bar>
       </BarChart>
     </ResponsiveContainer>
-  );  const StatsCards = () => (
-    <>
-      <div className="card"><p style={{
-        color: COLORS.textMuted,
-        fontSize: "1rem",
-        fontWeight: 700,
-        marginBottom: "14px",
-        letterSpacing: "0.05em"
-      }}>RISK ASSESSMENT</p>{badge(result.risk)}</div>
-      <div className="card">
-        <p
-          style={{
-            color: COLORS.textMuted,
-            fontSize: "1rem",
-            fontWeight: 700,
-            marginBottom: "14px",
-            letterSpacing: "0.05em"
-          }}
-        >
-          CONFIDENCE
-        </p>
+  );
 
-        <b
-          style={{
-            fontSize: "1.6rem",
-            fontWeight: 800,
-            color:
-              result.confidence >= 80
-                ? "#10b981"
-                : result.confidence >= 60
-                ? "#facc15"
-                : COLORS.danger
-          }}
-        >
+  const StatsCards = () => (
+    <>
+      <div className="card"><p style={{ color: COLORS.textMuted, fontSize: "1rem", fontWeight: 700, marginBottom: "14px", letterSpacing: "0.05em" }}>RISK ASSESSMENT</p>{badge(result.risk)}</div>
+      <div className="card">
+        <p style={{ color: COLORS.textMuted, fontSize: "1rem", fontWeight: 700, marginBottom: "14px", letterSpacing: "0.05em" }}>CONFIDENCE</p>
+        <b style={{ fontSize: "1.6rem", fontWeight: 800, color: result.confidence >= 80 ? "#10b981" : result.confidence >= 60 ? "#facc15" : COLORS.danger }}>
           {result.confidence}%
         </b>
       </div>
-      <div className="card"><p style={{
-        color: COLORS.textMuted,
-        fontSize: "1rem",
-        fontWeight: 700,
-        marginBottom: "14px",
-        letterSpacing: "0.05em"
-      }}>OVERALL GRADE</p>{badge(result.quality_grade)}</div>
-      <div className="card"><p style={{
-        color: COLORS.textMuted,
-        fontSize: "1rem",
-        fontWeight: 700,
-        marginBottom: "14px",
-        letterSpacing: "0.05em"
-      }}>COMPLEXITY</p><b style={{ color: COLORS.accent, fontSize: "1.1rem" }}>{result.time_complexity}</b></div>
+      <div className="card"><p style={{ color: COLORS.textMuted, fontSize: "1rem", fontWeight: 700, marginBottom: "14px", letterSpacing: "0.05em" }}>OVERALL GRADE</p>{badge(result.quality_grade)}</div>
+      <div className="card"><p style={{ color: COLORS.textMuted, fontSize: "1rem", fontWeight: 700, marginBottom: "14px", letterSpacing: "0.05em" }}>COMPLEXITY</p><b style={{ color: COLORS.accent, fontSize: "1.1rem" }}>{result.time_complexity}</b></div>
     </>
   );
 
-
+  // ── NEW: Monaco language id lookup ────────────────────────────────────────
+  const monacoLanguage = LANGUAGES.find(l => l.value === language)?.monacoId ?? "plaintext";
+  // ────────────────────────────────────────────────────────────────────────
 
   return (
-<div className="app">
-{/* ================= TOPBAR ================= */}
+    <div className="app">
+      {/* ================= TOPBAR ================= */}
       <nav className="topbar">
-        <div 
-          onClick={() => setIsSearchVisible(!isSearchVisible)} 
-          className="brand"
-        >
+        <div onClick={() => setIsSearchVisible(!isSearchVisible)} className="brand">
           <img src={logoImg} alt="Logo" style={{ width: 42, height: 42, borderRadius: "10px", objectFit: "contain" }} />
           <span className="brand-title">
-          AI Based Code Complexity and Risk Prediction System Using Machine Learning
+            AI Based Code Complexity and Risk Prediction System Using Machine Learning
           </span>
         </div>
 
@@ -348,59 +330,22 @@ export default function App() {
           <span className="topbar-byline">
             By <b style={{ color: COLORS.textMain }}>Aniruddha Sonawane</b>
           </span>
-<a
-  href="https://github.com/Aniruddha-Sonawane"
-  target="_blank"
-  className="pill-link"
->
-  <img src={githubLogo} alt="GitHub" style={{ width: 18, height: 18 }} />
-  GitHub
-</a>
-
-<a
-  href="https://www.linkedin.com/in/AniruddhaSonawane1"
-  target="_blank"
-  className="pill-link"
->
-  <img src={linkedinLogo} alt="LinkedIn" style={{ width: 18, height: 18 }} />
-  LinkedIn
-</a>
+          <a href="https://github.com/Aniruddha-Sonawane" target="_blank" className="pill-link">
+            <img src={githubLogo} alt="GitHub" style={{ width: 18, height: 18 }} />
+            GitHub
+          </a>
+          <a href="https://www.linkedin.com/in/AniruddhaSonawane1" target="_blank" className="pill-link">
+            <img src={linkedinLogo} alt="LinkedIn" style={{ width: 18, height: 18 }} />
+            LinkedIn
+          </a>
         </div>
       </nav>
 
       {isSearchVisible && (
         <>
-          <div
-            style={{
-              position: "fixed",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: "transparent",
-              zIndex: 1001
-            }}
-            onClick={() => setIsSearchVisible(false)}
-          />
-          <div
-            style={{
-              position: "fixed",
-              top: "10px",
-              left: "50%",
-              transform: "translateX(-18.75%) translateY(12.5%)",
-              width: "min(920px, 92vw)",
-              zIndex: 1002
-            }}
-          >
-            <input
-              autoFocus
-              type="text"
-              placeholder="Filter functions..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="search-input"
-              style={{ width: "100%" }}
-            />
+          <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "transparent", zIndex: 1001 }} onClick={() => setIsSearchVisible(false)} />
+          <div style={{ position: "fixed", top: "10px", left: "50%", transform: "translateX(-18.75%) translateY(12.5%)", width: "min(920px, 92vw)", zIndex: 1002 }}>
+            <input autoFocus type="text" placeholder="Filter functions..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="search-input" style={{ width: "100%" }} />
           </div>
         </>
       )}
@@ -414,29 +359,54 @@ export default function App() {
 
       <main className="main">
         <div className="layout">
-          
+
           {/* LEFT SIDE */}
           <div>
             <div className={`editor-and-stats ${isEditorExpanded ? "expanded" : "collapsed"}`}>
               <div className="card editor-card">
+
+                {/* ── NEW: Language selector bar ──────────────────────────── */}
+                <div style={{ display: "flex", gap: "8px", marginBottom: "10px", flexWrap: "wrap" }}>
+                  {LANGUAGES.map((lang) => (
+                    <button
+                      key={lang.value}
+                      onClick={() => handleLanguageChange(lang.value)}
+                      style={{
+                        padding: "5px 14px",
+                        borderRadius: "20px",
+                        border: `1px solid ${language === lang.value ? COLORS.primary : COLORS.border}`,
+                        background: language === lang.value ? `${COLORS.primary}22` : "transparent",
+                        color: language === lang.value ? COLORS.primary : COLORS.textMuted,
+                        fontSize: "0.78rem",
+                        fontWeight: language === lang.value ? 700 : 400,
+                        cursor: "pointer",
+                        transition: "all 0.15s"
+                      }}
+                    >
+                      {lang.label}
+                    </button>
+                  ))}
+                </div>
+                {/* ───────────────────────────────────────────────────────── */}
+
                 <div className="editor-shell">
-                  {/* 5. Attach Editor Ref via onMount */}
-                  <Editor 
-                      height="420px" 
-                      defaultLanguage="python" 
-                      value={code} 
-                      theme="vs-dark" 
-                      onChange={(v) => setCode(v || "")} 
-                      onMount={(editor) => { editorRef.current = editor; }} 
+                  <Editor
+                    height="420px"
+                    // ── CHANGED: dynamic language ──────────────────────────
+                    language={monacoLanguage}
+                    // ───────────────────────────────────────────────────────
+                    value={code}
+                    theme="vs-dark"
+                    onChange={(v) => setCode(v || "")}
+                    onMount={(editor) => { editorRef.current = editor; }}
                   />
                 </div>
+
                 <div className="actions">
                   <button onClick={analyze} className="btn btn-primary">
                     {loading ? "Analyzing..." : "Analyze Now"}
                   </button>
-                  <button onClick={loadHistory} className="btn btn-outline">
-                    History
-                  </button>
+                  <button onClick={loadHistory} className="btn btn-outline">History</button>
                   <button
                     onClick={() => setIsEditorExpanded(!isEditorExpanded)}
                     className="btn btn-ghost"
@@ -488,26 +458,43 @@ export default function App() {
       </main>
 
       {/* ================= MODALS ================= */}
-      
-      {/* HISTORY MODAL (UNTOUCHED) */}
+
+      {/* HISTORY MODAL */}
       {isHistoryOpen && (
         <>
           <div style={overlayStyle} onClick={() => setIsHistoryOpen(false)} />
           <div style={modalStyle}>
-             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "25px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "25px" }}>
               <h2 style={{ margin: 0 }}>Analysis History</h2>
               <button onClick={() => setIsHistoryOpen(false)} style={{ background: "transparent", border: "none", color: COLORS.textMuted, fontSize: "2rem", cursor: "pointer" }}>&times;</button>
             </div>
             <div style={{ overflowY: "auto", flex: 1, minHeight: 0, paddingRight: "8px" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
                 {history.map((item) => (
-                  <div key={item.id} onClick={() => { setCode(item.code); setResult(item.result); setIsHistoryOpen(false); }} 
-                       style={{ padding: "20px", border: `1px solid ${COLORS.border}`, borderRadius: "16px", cursor: "pointer", background: "rgba(255,255,255,0.02)" }}>
+                  <div
+                    key={item.id}
+                    onClick={() => {
+                      setCode(item.code);
+                      setResult(item.result);
+                      // ── NEW: restore language from history if stored ──────
+                      if (item.language) setLanguage(item.language);
+                      // ────────────────────────────────────────────────────
+                      setIsHistoryOpen(false);
+                    }}
+                    style={{ padding: "20px", border: `1px solid ${COLORS.border}`, borderRadius: "16px", cursor: "pointer", background: "rgba(255,255,255,0.02)" }}
+                  >
                     <b style={{ color: COLORS.primary }}>Session #{item.id}</b>
+                    {/* ── NEW: show language badge in history ──────────────── */}
+                    {item.language && (
+                      <span style={{ marginLeft: "8px", fontSize: "0.7rem", color: COLORS.accent, background: `${COLORS.accent}15`, padding: "2px 8px", borderRadius: "10px", border: `1px solid ${COLORS.accent}33` }}>
+                        {item.language}
+                      </span>
+                    )}
+                    {/* ────────────────────────────────────────────────────── */}
                     <p style={{ color: COLORS.textMuted, fontSize: "0.85rem", marginTop: "8px", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                      <span style={{ color: riskColor(item.result.risk) }}>●</span>
+                      <span style={{ color: riskColor(item.result.risk) }}>◉</span>
                       {item.result.risk}
-                      <span style={{ color: item.result.confidence >= 80 ? "#10b981" : item.result.confidence >= 60 ? "#facc15" : COLORS.danger }}>●</span>
+                      <span style={{ color: item.result.confidence >= 80 ? "#10b981" : item.result.confidence >= 60 ? "#facc15" : COLORS.danger }}>◉</span>
                       {item.result.confidence}%
                     </p>
                   </div>
@@ -520,77 +507,52 @@ export default function App() {
 
       {/* EXPANDED GRAPH MODAL */}
       {isGraphZoomOpen && (
-  <>
-    <div style={overlayStyle} onClick={() => setIsGraphZoomOpen(false)} />
-    <div style={modalStyle}>
-      {/* HEADER */}
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "20px" }}>
-        <h3 style={{ margin: 0, fontSize: "1.1rem", fontFamily: "'Outfit', sans-serif", color: COLORS.textMain }}>
-          Complexity Analysis
-        </h3>
-        <button 
-          onClick={() => setIsGraphZoomOpen(false)} 
-          style={{ background: "transparent", border: "none", color: COLORS.textMuted, cursor: "pointer", fontSize: "1.2rem" }}
-        >
-          &times;
-        </button>
-      </div>
+        <>
+          <div style={overlayStyle} onClick={() => setIsGraphZoomOpen(false)} />
+          <div style={modalStyle}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "20px" }}>
+              <h3 style={{ margin: 0, fontSize: "1.1rem", fontFamily: "'Outfit', sans-serif", color: COLORS.textMain }}>
+                Complexity Analysis
+              </h3>
+              <button onClick={() => setIsGraphZoomOpen(false)} style={{ background: "transparent", border: "none", color: COLORS.textMuted, cursor: "pointer", fontSize: "1.2rem" }}>
+                &times;
+              </button>
+            </div>
 
-      {/* CONTENT GRID */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: "20px", flex: 1, overflow: "hidden" }}>
-        
-        {/* LEFT: GRAPH AREA */}
-        <div style={{ background: "rgba(0,0,0,0.2)", borderRadius: "12px", padding: "10px", border: `1px solid ${COLORS.border}` }}>
-          <ChartContent height={380} data={filteredFunctions} />
-        </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: "20px", flex: 1, overflow: "hidden" }}>
+              <div style={{ background: "rgba(0,0,0,0.2)", borderRadius: "12px", padding: "10px", border: `1px solid ${COLORS.border}` }}>
+                <ChartContent height={380} data={filteredFunctions} />
+              </div>
 
-        {/* RIGHT: LIST AREA (SCROLLABLE) */}
-        <div style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <h4 style={{ color: COLORS.textMuted, fontSize: "0.65rem", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "10px" }}>
-            Functions ({filteredFunctions.length})
-          </h4>
-          
-          <div style={{ overflowY: "auto", flex: 1, paddingRight: "8px" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              {filteredFunctions.map((fn: any, idx: number) => (
-                <div 
-                  key={idx} 
-                  // 6. Attach Click Handler to List Items
-                  onClick={() => handleFunctionClick(fn.line)}
-                  style={{ 
-                    padding: "10px 14px", 
-                    background: "rgba(255,255,255,0.02)", 
-                    borderRadius: "8px", 
-                    border: `1px solid ${COLORS.border}`,
-                    display: "flex", 
-                    justifyContent: "space-between", 
-                    alignItems: "center",
-                    cursor: "pointer" // Make it look clickable
-                  }}
-                  // Optional hover effect could be added here via CSS class
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.05)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.02)")}
-                >
-                  <span style={{ fontSize: "0.85rem", fontWeight: "500", color: COLORS.textMain, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {fn.name}
-                  </span>
-                  <span style={{ 
-                    fontSize: "0.85rem", 
-                    fontWeight: "bold", 
-                    color: fn.complexity > 5 ? COLORS.danger : COLORS.accent 
-                  }}>
-                    {fn.complexity}
-                  </span>
+              <div style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                <h4 style={{ color: COLORS.textMuted, fontSize: "0.65rem", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "10px" }}>
+                  Functions ({filteredFunctions.length})
+                </h4>
+                <div style={{ overflowY: "auto", flex: 1, paddingRight: "8px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    {filteredFunctions.map((fn: any, idx: number) => (
+                      <div
+                        key={idx}
+                        onClick={() => handleFunctionClick(fn.line)}
+                        style={{ padding: "10px 14px", background: "rgba(255,255,255,0.02)", borderRadius: "8px", border: `1px solid ${COLORS.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.05)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.02)")}
+                      >
+                        <span style={{ fontSize: "0.85rem", fontWeight: "500", color: COLORS.textMain, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {fn.name}
+                        </span>
+                        <span style={{ fontSize: "0.85rem", fontWeight: "bold", color: fn.complexity > 5 ? COLORS.danger : COLORS.accent }}>
+                          {fn.complexity}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ))}
+              </div>
             </div>
           </div>
-        </div>
-        
-      </div>
-    </div>
-  </>
-)}
+        </>
+      )}
     </div>
   );
 }
